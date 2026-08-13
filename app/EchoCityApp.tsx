@@ -231,7 +231,7 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
 
     const connect = () => {
       if (!active) return;
-      setConnection("reconnecting");
+      if (!pollTimer) setConnection("reconnecting");
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${window.location.host}/api/realtime`);
       socket.addEventListener("open", () => {
