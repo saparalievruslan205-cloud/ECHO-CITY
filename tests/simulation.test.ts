@@ -46,6 +46,14 @@ test("green infrastructure uses a long-term horizon and improves air", () => {
   assert.ok(air && air.after < air.before);
 });
 
+test("green buffer visibly reduces a noise problem", () => {
+  const result = runScenario({ ...request, problem: { ...request.problem, type: "noise" }, solution: "green-buffer" });
+  const noise = result.metrics.find((metric) => metric.key === "noise");
+  assert.equal(result.horizon.unit, "months");
+  assert.ok(noise && noise.after < noise.before && noise.favorable);
+  assert.ok(noise && noise.before - noise.after >= 4);
+});
+
 test("spatial decay and district rating are stable", () => {
   assert.equal(spatialDecay(0, 1000), 1);
   assert.equal(spatialDecay(2000, 1000), 0);
@@ -59,4 +67,3 @@ test("road graph redistributes corridor loads", () => {
   assert.ok(loads.some((corridor) => corridor.loadAfter !== corridor.loadBefore));
   assert.ok(loads.every((corridor) => corridor.loadAfter >= 0 && corridor.loadAfter <= 100));
 });
-

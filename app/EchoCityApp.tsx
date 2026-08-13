@@ -288,6 +288,14 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
     const updatedAt = new Date(snapshot.observedAt);
     return Number.isNaN(updatedAt.getTime()) ? "нет данных" : formatTime(updatedAt);
   }, [snapshot.observedAt]);
+  const resultSolution = result ? solutionOptions.find((option) => option.id === result.request.solution) : null;
+  const resultPrimaryMetric = result?.metrics.find((metric) => metric.key === (result.request.problem.type === "noise" ? "noise" : result.request.problem.type === "pollution" ? "pm25" : "delay"));
+
+  const updateScenario = useCallback((update: (current: ScenarioRequest) => ScenarioRequest) => {
+    setScenario(update);
+    setResult(null);
+    setActionMessage("");
+  }, []);
 
   const toggleLayer = (layer: LayerKey) => {
     setActiveLayers((current) => {
@@ -300,11 +308,11 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
 
   const handleMapPick = useCallback((coordinates: [number, number]) => {
     if (!pickMode) return;
-    setScenario((current) => ({ ...current, problem: { ...current.problem, coordinates } }));
+    updateScenario((current) => ({ ...current, problem: { ...current.problem, coordinates } }));
     setPickMode(false);
     setSimulatorOpen(true);
     setActionMessage("Точка проблемы обновлена");
-  }, [pickMode]);
+  }, [pickMode, updateScenario]);
 
   const startMapPick = () => {
     setActionMessage("");
@@ -325,7 +333,15 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
         const next = runScenario(scenario);
         setResult(next);
         setScenarioHistory((current) => [next, ...current].slice(0, 4));
-        setActionMessage("Прогноз рассчитан");
+        setActiveLayers((current) => {
+          const nextLayers = new Set(current);
+          if (scenario.problem.type === "noise") nextLayers.add("noise");
+          if (scenario.problem.type === "pollution") nextLayers.add("air");
+          return nextLayers;
+        });
+        setSection("map");
+        setSimulatorOpen(false);
+        setActionMessage("Решение показано на карте");
       } catch {
         setActionMessage("Проверьте параметры сценария");
       } finally {
@@ -531,13 +547,30 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
         </Panel>
         {!rightPanel && <Button variant="secondary" size="icon" className="absolute right-4 top-[88px] z-20 hidden xl:inline-flex" aria-label="Показать панель" onClick={() => setRightPanel(true)}><Activity className="size-4" /></Button>}
 
-        <div className="absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 md:block">
-          <button type="button" onClick={() => setSimulatorOpen(true)} className="group flex min-h-14 items-center gap-4 rounded-2xl border border-[var(--accent-cyan)]/28 bg-[var(--surface-panel-strong)] px-4 py-2.5 shadow-[var(--shadow-floating)] backdrop-blur-2xl transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
-            <span className="grid size-9 place-items-center rounded-xl bg-[var(--accent-cyan)] text-[var(--action-primary-fg)]"><Network className="size-4" /></span>
-            <span className="text-left"><span className="block text-sm font-bold">Создать городскую проблему</span><span className="block text-[10px] text-[var(--text-tertiary)]">Выберите решение и увидьте прогноз</span></span>
-            <span className="ml-2 grid size-8 place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)]"><ChevronRight className="size-4 text-[var(--accent-cyan)] transition-transform group-hover:translate-x-0.5" /></span>
+        {section === "map" && <div className="absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 md:block">
+          {result && resultPrimaryMetric ? (
+            <Panel className="flex min-w-[430px] items-center gap-4 border-[var(--accent-green)]/35 px-4 py-3 shadow-[var(--shadow-floating)]">
+              <span className="grid size-10 place-items-center rounded-xl bg-[var(--accent-green)]/15 text-[var(--accent-green)]"><Leaf className="size-5" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-[var(--accent-green)]">Решение показано на карте</span><span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{resultSolution?.label}: {resultPrimaryMetric.before} → {resultPrimaryMetric.after} {resultPrimaryMetric.unit}</span></span>
+              <Button size="sm" variant="secondary" onClick={() => setSimulatorOpen(true)}>Детали</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setResult(null); setSimulatorOpen(true); }}>Новый</Button>
+            </Panel>
+          ) : (
+            <button type="button" onClick={() => setSimulatorOpen(true)} className="group flex min-h-14 items-center gap-4 rounded-2xl border border-[var(--accent-cyan)]/28 bg-[var(--surface-panel-strong)] px-4 py-2.5 shadow-[var(--shadow-floating)] backdrop-blur-2xl transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
+              <span className="grid size-9 place-items-center rounded-xl bg-[var(--accent-cyan)] text-[var(--action-primary-fg)]"><Network className="size-4" /></span>
+              <span className="text-left"><span className="block text-sm font-bold">Создать городскую проблему</span><span className="block text-[10px] text-[var(--text-tertiary)]">Выберите решение и увидьте прогноз</span></span>
+              <span className="ml-2 grid size-8 place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)]"><ChevronRight className="size-4 text-[var(--accent-cyan)] transition-transform group-hover:translate-x-0.5" /></span>
+            </button>
+          )}
+        </div>}
+
+        {section === "map" && result && resultPrimaryMetric && (
+          <button type="button" onClick={() => setSimulatorOpen(true)} className="absolute inset-x-3 bottom-[82px] z-20 flex min-h-14 items-center gap-3 rounded-2xl border border-[var(--accent-green)]/35 bg-[var(--surface-panel-strong)] px-3 text-left shadow-[var(--shadow-floating)] md:hidden">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--accent-green)]/15 text-[var(--accent-green)]"><Leaf className="size-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-[var(--accent-green)]">Решение на карте</span><span className="block truncate text-[10px] text-[var(--text-secondary)]">{resultPrimaryMetric.before} → {resultPrimaryMetric.after} {resultPrimaryMetric.unit}</span></span>
+            <ChevronRight className="size-4 text-[var(--accent-green)]" />
           </button>
-        </div>
+        )}
 
         <div className="absolute inset-x-3 bottom-3 z-30 md:hidden">
           <Panel className="flex items-center justify-around px-1 py-1.5">
@@ -572,25 +605,25 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
               <fieldset>
                 <legend className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]"><span className="grid size-5 place-items-center rounded-full bg-[var(--accent-cyan)]/12 text-[var(--accent-cyan)]">1</span> Тип проблемы</legend>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {problemOptions.map((option) => { const Icon = option.icon; const selected = scenario.problem.type === option.id; return <button key={option.id} type="button" onClick={() => setScenario((current) => ({ ...current, problem: { ...current.problem, type: option.id } }))} className={cn("flex min-h-[78px] flex-col items-center justify-center gap-2 rounded-xl border p-2 text-center text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", selected ? "border-[var(--accent-cyan)]/55 bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]" : "border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]")}><Icon className="size-4" />{option.label}</button>; })}
+                  {problemOptions.map((option) => { const Icon = option.icon; const selected = scenario.problem.type === option.id; return <button key={option.id} type="button" onClick={() => updateScenario((current) => ({ ...current, problem: { ...current.problem, type: option.id } }))} className={cn("flex min-h-[78px] flex-col items-center justify-center gap-2 rounded-xl border p-2 text-center text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", selected ? "border-[var(--accent-cyan)]/55 bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]" : "border-[var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]")}><Icon className="size-4" />{option.label}</button>; })}
                 </div>
               </fieldset>
 
               <fieldset className="space-y-4">
                 <legend className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]"><span className="grid size-5 place-items-center rounded-full bg-[var(--accent-cyan)]/12 text-[var(--accent-cyan)]">2</span> Параметры</legend>
                 <button type="button" onClick={startMapPick} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"><MapPin className="size-4 text-[var(--accent-cyan)]" /><span className="flex-1"><span className="block text-xs font-semibold">{scenario.problem.coordinates[1].toFixed(4)}, {scenario.problem.coordinates[0].toFixed(4)}</span><span className="block text-[10px] text-[var(--text-tertiary)]">Выбрать точку на карте</span></span><ChevronRight className="size-4 text-[var(--text-tertiary)]" /></button>
-                <label className="block"><span className="mb-2 flex justify-between text-xs"><span className="font-semibold">Интенсивность</span><span className="font-mono text-[var(--accent-cyan)]">{scenario.problem.intensity}%</span></span><input aria-label="Интенсивность проблемы" type="range" min="1" max="100" value={scenario.problem.intensity} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, intensity: Number(event.target.value) } }))} className="echo-range w-full" /></label>
+                <label className="block"><span className="mb-2 flex justify-between text-xs"><span className="font-semibold">Интенсивность</span><span className="font-mono text-[var(--accent-cyan)]">{scenario.problem.intensity}%</span></span><input aria-label="Интенсивность проблемы" type="range" min="1" max="100" value={scenario.problem.intensity} onChange={(event) => updateScenario((current) => ({ ...current, problem: { ...current.problem, intensity: Number(event.target.value) } }))} className="echo-range w-full" /></label>
                 <div className="grid grid-cols-2 gap-3">
-                  <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Радиус, м</span><input type="number" min="100" max="5000" value={scenario.problem.radius} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, radius: Number(event.target.value) } }))} className="echo-input" /></label>
-                  <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Время, мин</span><input type="number" min="10" max="1440" value={scenario.problem.durationMinutes} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, durationMinutes: Number(event.target.value) } }))} className="echo-input" /></label>
+                  <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Радиус, м</span><input type="number" min="100" max="5000" value={scenario.problem.radius} onChange={(event) => updateScenario((current) => ({ ...current, problem: { ...current.problem, radius: Number(event.target.value) } }))} className="echo-input" /></label>
+                  <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Время, мин</span><input type="number" min="10" max="1440" value={scenario.problem.durationMinutes} onChange={(event) => updateScenario((current) => ({ ...current, problem: { ...current.problem, durationMinutes: Number(event.target.value) } }))} className="echo-input" /></label>
                 </div>
-                <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Описание</span><textarea value={scenario.problem.description} maxLength={500} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, description: event.target.value } }))} className="echo-input min-h-20 resize-none py-3" /></label>
+                <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Описание</span><textarea value={scenario.problem.description} maxLength={500} onChange={(event) => updateScenario((current) => ({ ...current, problem: { ...current.problem, description: event.target.value } }))} className="echo-input min-h-20 resize-none py-3" /></label>
               </fieldset>
 
               <fieldset>
                 <legend className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]"><span className="grid size-5 place-items-center rounded-full bg-[var(--accent-cyan)]/12 text-[var(--accent-cyan)]">3</span> Решение</legend>
                 <div className="space-y-2">
-                  {solutionOptions.map((option) => { const Icon = option.icon; const selected = scenario.solution === option.id; return <button key={option.id} type="button" onClick={() => setScenario((current) => ({ ...current, solution: option.id }))} className={cn("flex min-h-14 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", selected ? "border-[var(--accent-green)]/48 bg-[var(--accent-green)]/8" : "border-[var(--border-subtle)] bg-[var(--surface-muted)] hover:bg-[var(--surface-hover)]")}><span className={cn("grid size-8 place-items-center rounded-lg", selected ? "bg-[var(--accent-green)]/15 text-[var(--accent-green)]" : "bg-[var(--surface-raised)] text-[var(--text-tertiary)]")}><Icon className="size-4" /></span><span className="flex-1"><span className="block text-xs font-semibold">{option.label}</span><span className="mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{option.description}</span></span>{selected && <Check className="size-4 text-[var(--accent-green)]" />}</button>; })}
+                  {solutionOptions.map((option) => { const Icon = option.icon; const selected = scenario.solution === option.id; return <button key={option.id} type="button" onClick={() => updateScenario((current) => ({ ...current, solution: option.id }))} className={cn("flex min-h-14 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", selected ? "border-[var(--accent-green)]/48 bg-[var(--accent-green)]/8" : "border-[var(--border-subtle)] bg-[var(--surface-muted)] hover:bg-[var(--surface-hover)]")}><span className={cn("grid size-8 place-items-center rounded-lg", selected ? "bg-[var(--accent-green)]/15 text-[var(--accent-green)]" : "bg-[var(--surface-raised)] text-[var(--text-tertiary)]")}><Icon className="size-4" /></span><span className="flex-1"><span className="block text-xs font-semibold">{option.label}</span><span className="mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{option.description}</span></span>{selected && <Check className="size-4 text-[var(--accent-green)]" />}</button>; })}
                 </div>
               </fieldset>
 
