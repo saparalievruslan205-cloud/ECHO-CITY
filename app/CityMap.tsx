@@ -36,28 +36,6 @@ const fieldPoints = [
   { position: [74.59, 42.82], air: 49, noise: 52, energy: 69 },
 ] as Array<{ position: [number, number]; air: number; noise: number; energy: number }>;
 
-interface LocalRoad {
-  path: [number, number][];
-  major: boolean;
-}
-
-const localRoads: LocalRoad[] = [
-  ...Array.from({ length: 13 }, (_, index) => {
-    const longitude = 74.505 + index * 0.015;
-    return {
-      path: [[longitude - 0.004, 42.805], [longitude, 42.85], [longitude + 0.003, 42.925]] as [number, number][],
-      major: index === 3 || index === 6 || index === 9,
-    };
-  }),
-  ...Array.from({ length: 10 }, (_, index) => {
-    const latitude = 42.815 + index * 0.0115;
-    return {
-      path: [[74.49, latitude - 0.002], [74.59, latitude], [74.695, latitude + 0.002]] as [number, number][],
-      major: index === 3 || index === 6,
-    };
-  }),
-];
-
 export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const deckContainerRef = useRef<HTMLDivElement>(null);
@@ -87,7 +65,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
     async function mount() {
       try {
         const maplibregl = await import("maplibre-gl");
-        const [{ Deck }, { PathLayer, ScatterplotLayer }, { TripsLayer }] = await Promise.all([
+        const [{ Deck }, { ScatterplotLayer }, { TripsLayer }] = await Promise.all([
           import("@deck.gl/core"),
           import("@deck.gl/layers"),
           import("@deck.gl/geo-layers"),
@@ -111,21 +89,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
 
         const makeLayers = (time: number) => {
           const visible = layersRef.current;
-          const layers: Layer[] = [
-            new PathLayer({
-              id: "local-street-structure",
-              data: localRoads,
-              getPath: (d: LocalRoad) => d.path,
-              getColor: (d: LocalRoad) => theme === "dark"
-                ? (d.major ? [32, 151, 190, 205] : [55, 91, 111, 125])
-                : (d.major ? [27, 149, 183, 205] : [105, 151, 169, 115]),
-              getWidth: (d: LocalRoad) => d.major ? 4 : 1.5,
-              widthUnits: "pixels",
-              widthMinPixels: 1,
-              jointRounded: true,
-              capRounded: true,
-            }),
-          ];
+          const layers: Layer[] = [];
           if (visible.has("air")) {
             layers.push(new ScatterplotLayer({
               id: "air-field",
