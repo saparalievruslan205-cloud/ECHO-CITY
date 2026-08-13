@@ -41,3 +41,5 @@ yarn-error.log*
 /work/
 *.tsbuildinfo
 *.tar.gz
+
+.env*
