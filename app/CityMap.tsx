@@ -104,6 +104,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
     let map: import("maplibre-gl").Map | null = null;
     let deck: import("@deck.gl/core").Deck | null = null;
     let transportTrips: Trip[] = [];
+    let transportationSourceId: string | null = null;
 
     async function mount() {
       try {
@@ -127,6 +128,9 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
           bearing: -10,
           canvasContextAttributes: { antialias: !lowPowerMode },
           attributionControl: false,
+          refreshExpiredTiles: true,
+          fadeDuration: 0,
+          renderWorldCopies: false,
         });
         map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
         map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
@@ -347,34 +351,49 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
         readyTimer = window.setTimeout(() => {
           if (!disposed && !mapReady) setState("error");
         }, 15_000);
-        map.on("load", () => {
+        const findVectorSource = (sourceLayer: string) => {
+          if (!map) return null;
+          const matchedLayer = map.getStyle().layers?.find((layer) => "source-layer" in layer && layer["source-layer"] === sourceLayer && "source" in layer);
+          return matchedLayer && "source" in matchedLayer && typeof matchedLayer.source === "string" ? matchedLayer.source : null;
+        };
+        const ensureCityLayers = () => {
           if (!map || disposed) return;
-          map.resize();
+          const buildingSourceId = findVectorSource("building");
+          transportationSourceId = findVectorSource("transportation");
           try {
-            if (map.getSource("openmaptiles") && !map.getLayer("echo-3d-buildings")) {
+            if (buildingSourceId && map.getSource(buildingSourceId) && !map.getLayer("echo-3d-buildings")) {
               const firstLabel = map.getStyle().layers?.find((layer) => layer.type === "symbol" && "layout" in layer && layer.layout?.["text-field"]);
               map.addLayer({
                 id: "echo-3d-buildings",
-                source: "openmaptiles",
+                source: buildingSourceId,
                 "source-layer": "building",
                 type: "fill-extrusion",
-                minzoom: 12,
+                minzoom: 11.2,
                 paint: {
                   "fill-extrusion-color": theme === "dark" ? "#122b40" : "#cbd7df",
                   "fill-extrusion-height": ["coalesce", ["get", "render_height"], ["get", "height"], 10],
                   "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-                  "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.35, 13, 0.72, 15, 0.86],
+                  "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 11.2, 0.24, 12, 0.48, 13, 0.72, 15, 0.86],
                 },
               }, firstLabel?.id);
             }
           } catch {
             // The public style may change its source-layer names; the map remains usable.
           }
+        };
+        map.on("load", () => {
+          if (!map || disposed) return;
+          map.resize();
+          window.requestAnimationFrame(() => map?.resize());
+          ensureCityLayers();
         });
+        map.on("styledata", ensureCityLayers);
         const rebuildNetworkTrips = () => {
-          if (!map || !map.getSource("openmaptiles")) return;
+          if (!map) return;
+          transportationSourceId ??= findVectorSource("transportation");
+          if (!transportationSourceId || !map.getSource(transportationSourceId)) return;
           try {
-            const features = map.querySourceFeatures("openmaptiles", { sourceLayer: "transportation" }) as TransportationFeature[];
+            const features = map.querySourceFeatures(transportationSourceId, { sourceLayer: "transportation" }) as TransportationFeature[];
             const roads: [number, number][][] = [];
             const seen = new Set<string>();
             for (const feature of features) {
@@ -412,11 +431,12 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
             transportTrips = [];
           }
         };
-        map.on("idle", rebuildNetworkTrips);
-        map.once("idle", () => {
+        const handleIdle = () => {
           rebuildNetworkTrips();
-          markReady();
-        });
+          ensureCityLayers();
+          if (map?.areTilesLoaded()) markReady();
+        };
+        map.on("idle", handleIdle);
         map.on("click", (event) => callbackRef.current([event.lngLat.lng, event.lngLat.lat]));
         map.on("error", (event) => {
           if (event.error?.message?.toLowerCase().includes("webgl")) setState("unsupported");
