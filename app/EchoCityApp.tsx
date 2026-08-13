@@ -94,6 +94,38 @@ interface EchoCityAppProps {
   user: UserPreview | null;
 }
 
+interface AdminUserRow {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  createdAt: string;
+}
+
+interface AdminProblemRow {
+  id: string;
+  ownerId: string;
+  type: ProblemType;
+  description: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+interface AdminAuditRow {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  createdAt: string;
+}
+
+interface AdminEventRow {
+  id: string;
+  title: string;
+  status: "draft" | "published" | "archived";
+  createdAt: string;
+}
+
 const navItems: Array<{ id: SectionKey; label: string; icon: typeof Map }> = [
   { id: "map", label: "Карта", icon: Map },
   { id: "analytics", label: "Аналитика", icon: ChartNoAxesCombined },
@@ -181,6 +213,7 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
   const [pickMode, setPickMode] = useState(false);
   const [scenario, setScenario] = useState<ScenarioRequest>(initialScenario);
   const [result, setResult] = useState<ScenarioResult | null>(null);
+  const [scenarioHistory, setScenarioHistory] = useState<ScenarioResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [savedScenarioId, setSavedScenarioId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string>("");
@@ -308,6 +341,7 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
       try {
         const next = runScenario(scenario);
         setResult(next);
+        setScenarioHistory((current) => [next, ...current].slice(0, 4));
         setActionMessage("Прогноз рассчитан");
       } catch {
         setActionMessage("Проверьте параметры сценария");
@@ -323,6 +357,13 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
       return;
     }
     try {
+      const problemResponse = await fetch("/api/problems", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(scenario.problem),
+      });
+      const problemPayload = await problemResponse.json() as { error?: string };
+      if (!problemResponse.ok) throw new Error(problemPayload.error ?? "Не удалось создать проблему");
       const response = await fetch("/api/scenarios", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -464,8 +505,8 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
           <div className="grid grid-cols-2 gap-px bg-[var(--border-subtle)]">
             <KpiCell icon={Thermometer} label="Температура" value={`${Math.round(snapshot.weather.temperature)}°`} meta={`ветер ${Math.round(snapshot.weather.windSpeed)} км/ч`} accent="var(--accent-cyan)" />
             <KpiCell icon={AirVent} label="Воздух" value={`${Math.round(snapshot.air.aqi)}`} meta={`PM2.5 · ${Math.round(snapshot.air.pm25)}`} accent={snapshot.air.aqi > 80 ? "var(--status-critical)" : "var(--accent-green)"} />
-            <KpiCell icon={Gauge} label="Скорость" value={`${snapshot.averageSpeed}`} meta="км/ч · модель" accent="var(--accent-amber)" />
-            <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energyLoad}%`} meta="нагрузка сети" accent="var(--accent-violet)" />
+            <KpiCell icon={Gauge} label="Скорость" value={`${snapshot.transport.averageSpeed}`} meta="км/ч · модель" accent="var(--accent-amber)" />
+            <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent="var(--accent-violet)" />
           </div>
           <div className="border-t border-[var(--border-subtle)] p-4">
             <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">События</span><Badge>{snapshot.events.length} активных</Badge></div>
@@ -505,6 +546,7 @@ export function EchoCityApp({ user }: EchoCityAppProps) {
             snapshot={snapshot}
             user={user}
             result={result}
+            scenarioHistory={scenarioHistory}
             onClose={() => setSection("map")}
             onSimulate={() => setSimulatorOpen(true)}
           />
@@ -570,7 +612,7 @@ function KpiCell({ icon: Icon, label, value, meta, accent }: { icon: typeof Gaug
   return <div className="bg-[var(--surface-panel)] p-3.5"><div className="mb-3 flex items-center justify-between"><span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">{label}</span><Icon className="size-3.5" style={{ color: accent }} /></div><div className="font-[var(--font-display)] text-xl font-bold tracking-[-0.04em]" style={{ color: accent }}>{value}</div><div className="mt-1 text-[9px] text-[var(--text-tertiary)]">{meta}</div></div>;
 }
 
-function SectionOverlay({ section, snapshot, user, result, onClose, onSimulate }: { section: SectionKey; snapshot: CitySnapshot; user: UserPreview | null; result: ScenarioResult | null; onClose: () => void; onSimulate: () => void }) {
+function SectionOverlay({ section, snapshot, user, result, scenarioHistory, onClose, onSimulate }: { section: SectionKey; snapshot: CitySnapshot; user: UserPreview | null; result: ScenarioResult | null; scenarioHistory: ScenarioResult[]; onClose: () => void; onSimulate: () => void }) {
   const title = navItems.find((item) => item.id === section)?.label ?? "Раздел";
   return (
     <div className="absolute inset-x-0 bottom-0 top-[72px] z-30 overflow-y-auto bg-[var(--overlay-page)] px-3 pb-24 pt-3 backdrop-blur-xl md:px-8 md:pb-8 md:pt-6">
@@ -578,7 +620,7 @@ function SectionOverlay({ section, snapshot, user, result, onClose, onSimulate }
         <div className="mb-5 flex items-center justify-between"><div><Badge>Городская система</Badge><h1 className="mt-2 font-[var(--font-display)] text-2xl font-bold tracking-[-0.04em] md:text-3xl">{title}</h1></div><Button variant="secondary" size="icon" aria-label="Закрыть раздел" onClick={onClose}><X className="size-4" /></Button></div>
         {section === "analytics" && <AnalyticsView snapshot={snapshot} />}
         {section === "districts" && <DistrictsView snapshot={snapshot} />}
-        {section === "scenarios" && <ScenariosView result={result} user={user} onSimulate={onSimulate} />}
+        {section === "scenarios" && <ScenariosView result={result} history={scenarioHistory} user={user} onSimulate={onSimulate} />}
         {section === "reports" && <ReportsView result={result} user={user} onSimulate={onSimulate} />}
         {section === "admin" && <AdminView user={user} snapshot={snapshot} />}
       </div>
@@ -590,7 +632,7 @@ function AnalyticsView({ snapshot }: { snapshot: CitySnapshot }) {
   return <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
     <Panel className="p-5 md:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-bold">Динамика за день</p><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">Моделируемые индексы · 0–100</p></div><Badge><Activity className="size-3" /> Обновлено {formatUpdate(snapshot.observedAt)}</Badge></div><div className="h-72"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData}><defs><linearGradient id="trafficFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-cyan)" stopOpacity={0.35}/><stop offset="100%" stopColor="var(--accent-cyan)" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="var(--chart-grid)" vertical={false}/><XAxis dataKey="time" stroke="var(--text-tertiary)" tickLine={false} axisLine={false} fontSize={10}/><YAxis stroke="var(--text-tertiary)" tickLine={false} axisLine={false} fontSize={10}/><Tooltip contentStyle={{ background: "var(--surface-panel-strong)", border: "1px solid var(--border-subtle)", borderRadius: 12, fontSize: 11 }}/><Area type="monotone" dataKey="traffic" stroke="var(--accent-cyan)" strokeWidth={2} fill="url(#trafficFill)"/><Line type="monotone" dataKey="energy" stroke="var(--accent-violet)" strokeWidth={1.5} dot={false}/></AreaChart></ResponsiveContainer></div></Panel>
     <Panel className="p-5 md:p-6"><p className="text-xs font-bold">Баланс города</p><p className="mt-1 text-[11px] text-[var(--text-tertiary)]">Среднее по четырём районам</p><div className="mt-3 h-72"><ResponsiveContainer width="100%" height="100%"><RadarChart data={[{ key: "Воздух", value: 66 }, { key: "Безопасность", value: 77 }, { key: "Транспорт", value: 69 }, { key: "Шум", value: 61 }, { key: "Комфорт", value: 71 }, { key: "Энергия", value: 69 }]}><PolarGrid stroke="var(--chart-grid)"/><PolarAngleAxis dataKey="key" tick={{ fill: "var(--text-secondary)", fontSize: 9 }}/><RadarChartShape dataKey="value" stroke="var(--accent-green)" fill="var(--accent-green)" fillOpacity={0.2}/></RadarChart></ResponsiveContainer></div></Panel>
-    <div className="grid gap-3 sm:grid-cols-3 lg:col-span-2"><MetricCard icon={BusFront} label="На линии" value={`${snapshot.activeTransportUnits}`} meta="единиц · модель" color="var(--accent-cyan)"/><MetricCard icon={Wind} label="PM2.5" value={`${Math.round(snapshot.air.pm25)}`} meta="мкг/м³ · Open-Meteo" color="var(--accent-green)"/><MetricCard icon={Zap} label="Пик нагрузки" value={`${snapshot.energyLoad}%`} meta="энергосистема · модель" color="var(--accent-violet)"/></div>
+    <div className="grid gap-3 sm:grid-cols-3 lg:col-span-2"><MetricCard icon={BusFront} label="На линии" value={`${snapshot.transport.activeUnits}`} meta={`единиц · ${snapshot.transport.sourceType === "modelled" ? "модель" : "наблюдение"}`} color="var(--accent-cyan)"/><MetricCard icon={Wind} label="PM2.5" value={`${Math.round(snapshot.air.pm25)}`} meta="мкг/м³ · Open-Meteo" color="var(--accent-green)"/><MetricCard icon={Zap} label="Пик нагрузки" value={`${snapshot.energy.load}%`} meta={`энергосистема · ${snapshot.energy.sourceType === "modelled" ? "модель" : "наблюдение"}`} color="var(--accent-violet)"/></div>
   </div>;
 }
 
@@ -598,8 +640,15 @@ function DistrictsView({ snapshot }: { snapshot: CitySnapshot }) {
   return <div className="grid gap-4 md:grid-cols-2">{snapshot.districts.map((district, index) => { const total = Math.round(Object.values(district.values).reduce((sum, value) => sum + value, 0) / 6); return <Panel key={district.districtId} className="overflow-hidden"><div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-5"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-[var(--accent-cyan)]/10 text-sm font-bold text-[var(--accent-cyan)]">0{index + 1}</span><div><h2 className="text-sm font-bold">{district.districtName}</h2><p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">Моделируемые показатели</p></div></div><div className="text-right"><div className="font-[var(--font-display)] text-2xl font-bold" style={{ color: ratingColor(total) }}>{total}</div><span className="text-[9px] text-[var(--text-tertiary)]">общий рейтинг</span></div></div><div className="grid grid-cols-2 gap-px bg-[var(--border-subtle)] sm:grid-cols-3">{Object.entries(district.values).map(([key, value]) => <div key={key} className="bg-[var(--surface-panel)] p-4"><div className="mb-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">{{ air: "Воздух", safety: "Безопасность", transport: "Транспорт", noise: "Тишина", comfort: "Комфорт", energy: "Энергия" }[key]}</div><div className="flex items-end gap-2"><span className="text-lg font-bold">{value}</span><span className="mb-1 h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-muted)]"><span className="block h-full rounded-full" style={{ width: `${value}%`, background: ratingColor(value) }} /></span></div></div>)}</div></Panel>; })}</div>;
 }
 
-function ScenariosView({ result, user, onSimulate }: { result: ScenarioResult | null; user: UserPreview | null; onSimulate: () => void }) {
-  return <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]"><Panel className="p-6"><div className="grid size-11 place-items-center rounded-2xl bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]"><GitCompareArrows className="size-5" /></div><h2 className="mt-5 text-lg font-bold">Лаборатория решений</h2><p className="mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">Поставьте проблему на карту, выберите вмешательство и сравните изменение транспорта, воздуха, шума и комфорта.</p><Button className="mt-6" onClick={onSimulate}><Plus className="size-4" /> Новый сценарий</Button>{!user && <p className="mt-4 flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]"><LockKeyhole className="size-3.5" /> Для сохранения потребуется вход</p>}</Panel>{result ? <Panel className="p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold">Последний прогноз</p><p className="mt-1 text-[10px] text-[var(--text-tertiary)]">Уверенность модели {result.confidence}%</p></div><Badge>Готово</Badge></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{result.metrics.map((metric) => <div key={metric.key} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3"><span className="text-[9px] text-[var(--text-tertiary)]">{metric.label}</span><div className="mt-2 flex items-baseline gap-1.5"><span className="text-lg font-bold">{metric.after}</span><span className="text-[9px] text-[var(--text-tertiary)]">{metric.unit}</span></div><span className={cn("mt-1 inline-flex text-[10px] font-bold", metric.favorable ? "text-[var(--accent-green)]" : "text-[var(--status-critical)]")}>{metric.delta > 0 ? "+" : ""}{metric.delta}</span></div>)}</div></Panel> : <Panel className="grid min-h-72 place-items-center p-6 text-center"><div><Radar className="mx-auto size-7 text-[var(--text-tertiary)]"/><p className="mt-3 text-sm font-semibold">Здесь появится сравнение</p><p className="mt-1 text-xs text-[var(--text-tertiary)]">Запустите первый прогноз</p></div></Panel>}</div>;
+function ScenariosView({ result, history, user, onSimulate }: { result: ScenarioResult | null; history: ScenarioResult[]; user: UserPreview | null; onSimulate: () => void }) {
+  const compared = history.slice(0, 2);
+  return <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+      <Panel className="p-6"><div className="grid size-11 place-items-center rounded-2xl bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]"><GitCompareArrows className="size-5" /></div><h2 className="mt-5 text-lg font-bold">Лаборатория решений</h2><p className="mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">Поставьте проблему на карту, выберите вмешательство и сравните два прогноза.</p><Button className="mt-6" onClick={onSimulate}><Plus className="size-4" /> Новый сценарий</Button>{!user && <p className="mt-4 flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]"><LockKeyhole className="size-3.5" /> Для сохранения потребуется вход</p>}</Panel>
+      {result ? <Panel className="p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold">Последний прогноз</p><p className="mt-1 text-[10px] text-[var(--text-tertiary)]">Уверенность модели {result.confidence}%</p></div><Badge>Готово</Badge></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{result.metrics.map((metric) => <div key={metric.key} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3"><span className="text-[9px] text-[var(--text-tertiary)]">{metric.label}</span><div className="mt-2 flex items-baseline gap-1.5"><span className="text-lg font-bold">{metric.after}</span><span className="text-[9px] text-[var(--text-tertiary)]">{metric.unit}</span></div><span className={cn("mt-1 inline-flex text-[10px] font-bold", metric.favorable ? "text-[var(--accent-green)]" : "text-[var(--status-critical)]")}>{metric.delta > 0 ? "+" : ""}{metric.delta}</span></div>)}</div></Panel> : <Panel className="grid min-h-72 place-items-center p-6 text-center"><div><Radar className="mx-auto size-7 text-[var(--text-tertiary)]"/><p className="mt-3 text-sm font-semibold">Здесь появится сравнение</p><p className="mt-1 text-xs text-[var(--text-tertiary)]">Запустите первый прогноз</p></div></Panel>}
+    </div>
+    {compared.length > 0 && <Panel className="overflow-hidden"><div className="border-b border-[var(--border-subtle)] p-5"><h2 className="text-sm font-bold">Сравнение сценариев</h2><p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{compared.length === 1 ? "Запустите ещё один вариант для сравнения" : "Два последних расчёта по единой шкале"}</p></div><div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead><tr className="bg-[var(--surface-muted)] text-[var(--text-tertiary)]"><th className="p-3">Показатель</th>{compared.map((item) => <th key={item.id} className="p-3">{solutionOptions.find((option) => option.id === item.request.solution)?.label}<span className="mt-1 block text-[9px] font-normal">уверенность {item.confidence}%</span></th>)}</tr></thead><tbody>{compared[0].metrics.map((metric, metricIndex) => <tr key={metric.key} className="border-t border-[var(--border-subtle)]"><td className="p-3 font-semibold">{metric.label}</td>{compared.map((item) => <td key={item.id} className="p-3"><span className="font-bold">{item.metrics[metricIndex].after}</span> <span className="text-[var(--text-tertiary)]">{item.metrics[metricIndex].unit}</span><span className="ml-2 text-[var(--accent-green)]">{item.metrics[metricIndex].delta > 0 ? "+" : ""}{item.metrics[metricIndex].delta}</span></td>)}</tr>)}</tbody></table></div></Panel>}
+  </div>;
 }
 
 function ReportsView({ result, user, onSimulate }: { result: ScenarioResult | null; user: UserPreview | null; onSimulate: () => void }) {
@@ -607,8 +656,104 @@ function ReportsView({ result, user, onSimulate }: { result: ScenarioResult | nu
 }
 
 function AdminView({ user, snapshot }: { user: UserPreview | null; snapshot: CitySnapshot }) {
-  if (user?.role !== "admin") return <Panel className="mx-auto grid min-h-[420px] max-w-2xl place-items-center p-8 text-center"><div><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[var(--accent-amber)]/10 text-[var(--accent-amber)]"><LockKeyhole className="size-6" /></div><h2 className="mt-5 text-lg font-bold">Административный доступ</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">Управление пользователями, событиями, показателями и журналом действий доступно только роли администратора.</p>{!user && <Button asChild className="mt-6"><a href="/signin-with-chatgpt?return_to=%2F">Войти через ChatGPT</a></Button>}</div></Panel>;
-  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><MetricCard icon={Users} label="Пользователи" value="128" meta="+14 за неделю" color="var(--accent-cyan)"/><MetricCard icon={Bell} label="События" value={`${snapshot.events.length}`} meta="активных на карте" color="var(--accent-amber)"/><MetricCard icon={Building2} label="Показатели" value="24" meta="6 × 4 района" color="var(--accent-green)"/><MetricCard icon={ShieldCheck} label="Аудит" value="100%" meta="действия фиксируются" color="var(--accent-violet)"/><Panel className="p-6 md:col-span-2 xl:col-span-4"><h2 className="text-sm font-bold">Операционный журнал</h2><div className="mt-4 space-y-2">{["metric.create", "event.status.update", "user.role.update"].map((action, index) => <div key={action} className="flex items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3"><span className="size-2 rounded-full bg-[var(--accent-green)]"/><code className="text-xs text-[var(--accent-cyan)]">{action}</code><span className="ml-auto text-[10px] text-[var(--text-tertiary)]">{index + 2} мин назад</span></div>)}</div></Panel></div>;
+  const isAdmin = user?.role === "admin";
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [problems, setProblems] = useState<AdminProblemRow[]>([]);
+  const [adminEvents, setAdminEvents] = useState<AdminEventRow[]>([]);
+  const [audit, setAudit] = useState<AdminAuditRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventSource, setEventSource] = useState("");
+  const [metricDistrict, setMetricDistrict] = useState("pervomayskiy");
+  const [metricKey, setMetricKey] = useState("air");
+  const [metricValue, setMetricValue] = useState("70");
+
+  const loadAdmin = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoading(true);
+    try {
+      const responses = await Promise.all([
+        fetch("/api/admin/users", { cache: "no-store" }),
+        fetch("/api/problems", { cache: "no-store" }),
+        fetch("/api/admin/events", { cache: "no-store" }),
+        fetch("/api/admin/audit", { cache: "no-store" }),
+      ]);
+      if (responses.some((response) => !response.ok)) throw new Error("Не удалось загрузить административные данные");
+      const [usersPayload, problemsPayload, eventsPayload, auditPayload] = await Promise.all(responses.map((response) => response.json()));
+      setUsers((usersPayload as { users: AdminUserRow[] }).users ?? []);
+      setProblems((problemsPayload as { problems: AdminProblemRow[] }).problems ?? []);
+      setAdminEvents((eventsPayload as { events: AdminEventRow[] }).events ?? []);
+      setAudit((auditPayload as { audit: AdminAuditRow[] }).audit ?? []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка загрузки");
+    } finally {
+      setLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadAdmin(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [loadAdmin]);
+
+  async function mutate(url: string, method: "POST" | "PATCH", body: unknown, success: string) {
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Операция не выполнена");
+      setMessage(success);
+      await loadAdmin();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка операции");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!isAdmin) return <Panel className="mx-auto grid min-h-[420px] max-w-2xl place-items-center p-8 text-center"><div><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[var(--accent-amber)]/10 text-[var(--accent-amber)]"><LockKeyhole className="size-6" /></div><h2 className="mt-5 text-lg font-bold">Административный доступ</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">Управление пользователями, событиями, показателями и журналом действий доступно только роли администратора.</p>{!user && <Button asChild className="mt-6"><a href="/signin-with-chatgpt?return_to=%2F">Войти через ChatGPT</a></Button>}</div></Panel>;
+
+  return <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <MetricCard icon={Users} label="Пользователи" value={`${users.length}`} meta="зарегистрировано" color="var(--accent-cyan)"/>
+    <MetricCard icon={Bell} label="События" value={`${snapshot.events.length}`} meta="активных на карте" color="var(--accent-amber)"/>
+    <MetricCard icon={TrafficCone} label="На модерации" value={`${problems.filter((problem) => problem.status === "pending").length}`} meta="проблем от жителей" color="var(--status-critical)"/>
+    <MetricCard icon={ShieldCheck} label="Аудит" value={`${audit.length}`} meta="последних операций" color="var(--accent-violet)"/>
+
+    {message && <div role="status" className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 py-3 text-xs text-[var(--text-secondary)] md:col-span-2 xl:col-span-4">{message}</div>}
+
+    <Panel className="p-5 xl:col-span-2">
+      <div className="flex items-center justify-between"><h2 className="text-sm font-bold">Роли пользователей</h2><Badge>{loading ? "Обновление" : `${users.length} записей`}</Badge></div>
+      <div className="mt-4 max-h-80 space-y-2 overflow-auto">
+        {users.length === 0 && <p className="rounded-xl bg-[var(--surface-muted)] p-4 text-xs text-[var(--text-tertiary)]">Пользователи появятся после первого входа.</p>}
+        {users.map((entry) => <div key={entry.id} className="grid gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3 sm:grid-cols-[1fr_150px] sm:items-center"><div className="min-w-0"><p className="truncate text-xs font-semibold">{entry.displayName || entry.email}</p><p className="mt-1 truncate text-[10px] text-[var(--text-tertiary)]">{entry.email}</p></div><select aria-label={`Роль ${entry.email}`} className="echo-input" value={entry.role} disabled={loading} onChange={(event) => void mutate("/api/admin/users", "PATCH", { id: entry.id, role: event.target.value }, "Роль обновлена")}><option value="resident">Житель</option><option value="analyst">Аналитик</option><option value="admin">Администратор</option></select></div>)}
+      </div>
+    </Panel>
+
+    <Panel className="p-5 xl:col-span-2">
+      <div className="flex items-center justify-between"><h2 className="text-sm font-bold">Модерация проблем</h2><Badge>{problems.filter((problem) => problem.status === "pending").length} ожидают</Badge></div>
+      <div className="mt-4 max-h-80 space-y-2 overflow-auto">
+        {problems.length === 0 && <p className="rounded-xl bg-[var(--surface-muted)] p-4 text-xs text-[var(--text-tertiary)]">Новых сообщений от жителей нет.</p>}
+        {problems.map((problem) => <div key={problem.id} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold">{problemOptions.find((option) => option.id === problem.type)?.label ?? problem.type}</p><p className="mt-1 line-clamp-2 text-[10px] text-[var(--text-tertiary)]">{problem.description}</p></div><Badge>{problem.status}</Badge></div>{problem.status === "pending" && <div className="mt-3 flex gap-2"><Button size="sm" disabled={loading} onClick={() => void mutate("/api/problems", "PATCH", { id: problem.id, status: "approved" }, "Проблема опубликована")}><Check className="size-3.5"/>Одобрить</Button><Button size="sm" variant="secondary" disabled={loading} onClick={() => void mutate("/api/problems", "PATCH", { id: problem.id, status: "rejected" }, "Проблема отклонена")}><X className="size-3.5"/>Отклонить</Button></div>}</div>)}
+      </div>
+    </Panel>
+
+    <Panel className="p-5 xl:col-span-2">
+      <h2 className="text-sm font-bold">Городские события</h2><form className="mt-4 space-y-3" onSubmit={(event) => { event.preventDefault(); void mutate("/api/admin/events", "POST", { title: eventTitle, description: eventTitle, category: "event", severity: "info", coordinates: [74.6036, 42.8772], districtId: "pervomayskiy", sourceUrl: eventSource, startsAt: new Date().toISOString() }, "Событие опубликовано").then(() => { setEventTitle(""); setEventSource(""); }); }}><label><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Название</span><input required minLength={3} maxLength={140} className="echo-input" value={eventTitle} onChange={(event) => setEventTitle(event.target.value)}/></label><label><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Ссылка на источник</span><input required type="url" className="echo-input" placeholder="https://…" value={eventSource} onChange={(event) => setEventSource(event.target.value)}/></label><Button size="sm" disabled={loading}><Plus className="size-3.5"/>Опубликовать</Button></form>
+      <div className="mt-4 space-y-2">{adminEvents.slice(0, 4).map((event) => <div key={event.id} className="flex items-center gap-3 rounded-xl bg-[var(--surface-muted)] p-3"><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{event.title}</p><p className="mt-1 text-[10px] text-[var(--text-tertiary)]">{event.status}</p></div>{event.status !== "archived" && <Button size="sm" variant="ghost" disabled={loading} onClick={() => void mutate("/api/admin/events", "PATCH", { id: event.id, status: "archived" }, "Событие архивировано")}>В архив</Button>}</div>)}</div>
+    </Panel>
+
+    <Panel className="p-5 xl:col-span-2">
+      <h2 className="text-sm font-bold">Показатели районов</h2><form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void mutate("/api/admin/metrics", "POST", { districtId: metricDistrict, key: metricKey, value: Number(metricValue), sourceType: "observed", observedAt: new Date().toISOString() }, "Показатель сохранён"); }}><label><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Район</span><select className="echo-input" value={metricDistrict} onChange={(event) => setMetricDistrict(event.target.value)}><option value="leninskiy">Ленинский</option><option value="oktyabrskiy">Октябрьский</option><option value="pervomayskiy">Первомайский</option><option value="sverdlovskiy">Свердловский</option></select></label><label><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Метрика</span><select className="echo-input" value={metricKey} onChange={(event) => setMetricKey(event.target.value)}><option value="air">Воздух</option><option value="safety">Безопасность</option><option value="transport">Транспорт</option><option value="noise">Шум</option><option value="comfort">Комфорт</option><option value="energy">Энергия</option></select></label><label className="sm:col-span-2"><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Значение · 0–100</span><input required type="number" min="0" max="100" className="echo-input" value={metricValue} onChange={(event) => setMetricValue(event.target.value)}/></label><Button size="sm" className="sm:col-span-2" disabled={loading}><Save className="size-3.5"/>Сохранить показатель</Button></form>
+    </Panel>
+
+    <Panel className="p-5 md:col-span-2 xl:col-span-4"><div className="flex items-center justify-between"><h2 className="text-sm font-bold">Операционный журнал</h2><Badge>до 200 записей</Badge></div><div className="mt-4 max-h-72 space-y-2 overflow-auto">{audit.length === 0 && <p className="rounded-xl bg-[var(--surface-muted)] p-4 text-xs text-[var(--text-tertiary)]">Журнал пока пуст.</p>}{audit.map((entry) => <div key={entry.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] p-3"><span className="size-2 rounded-full bg-[var(--accent-green)]"/><code className="text-xs text-[var(--accent-cyan)]">{entry.action}</code><span className="text-[10px] text-[var(--text-tertiary)]">{entry.entityType} · {entry.entityId.slice(0, 8)}</span><time className="ml-auto text-[10px] text-[var(--text-tertiary)]">{new Date(entry.createdAt).toLocaleString("ru-RU")}</time></div>)}</div></Panel>
+  </div>;
 }
 
 function MetricCard({ icon: Icon, label, value, meta, color }: { icon: typeof Gauge; label: string; value: string; meta: string; color: string }) {

@@ -60,9 +60,17 @@ export interface CitySnapshot {
   air: AirSnapshot;
   districts: DistrictMetric[];
   events: CityEvent[];
-  activeTransportUnits: number;
-  averageSpeed: number;
-  energyLoad: number;
+  transport: {
+    activeUnits: number;
+    averageSpeed: number;
+    sourceType: SourceType;
+    updatedAt: string;
+  };
+  energy: {
+    load: number;
+    sourceType: SourceType;
+    updatedAt: string;
+  };
 }
 
 export type ProblemType = "traffic" | "closure" | "pollution" | "noise";

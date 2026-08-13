@@ -17,9 +17,16 @@ test("public district API returns four sourced districts", async () => {
   const payload = await response.json();
   assert.equal(payload.districts.length, 4);
   assert.ok(payload.districts.every((item) => item.sourceType === "modelled" && item.updatedAt));
+  const snapshotResponse = await worker.fetch(new Request("http://localhost/api/city/snapshot"), env, ctx);
+  const snapshot = await snapshotResponse.json();
+  assert.equal(snapshot.transport.sourceType, "modelled");
+  assert.ok(snapshot.transport.updatedAt);
+  assert.equal(snapshot.energy.sourceType, "modelled");
+  assert.ok(snapshot.energy.updatedAt);
 });
 
 test("resident and admin guards reject anonymous requests", async () => {
+  const worker = await loadWorker();
   const { requireRequestUser, requireRole } = await import("../lib/auth.ts");
   await assert.rejects(
     requireRequestUser(new Request("http://localhost/api/problems")),
@@ -29,6 +36,14 @@ test("resident and admin guards reject anonymous requests", async () => {
     requireRole(new Request("http://localhost/api/admin/audit"), ["admin"]),
     (error) => error instanceof Response && error.status === 401,
   );
+  const listProblems = await worker.fetch(new Request("http://localhost/api/problems"), env, ctx);
+  const moderateProblem = await worker.fetch(new Request("http://localhost/api/problems", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: crypto.randomUUID(), status: "approved" }),
+  }), env, ctx);
+  assert.equal(listProblems.status, 401);
+  assert.equal(moderateProblem.status, 401);
 });
 
 test("realtime endpoint enforces WebSocket handshake and local polling fallback", async () => {

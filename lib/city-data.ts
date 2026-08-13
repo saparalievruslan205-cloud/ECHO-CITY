@@ -101,9 +101,8 @@ export function getFallbackSnapshot(stale = false): CitySnapshot {
     },
     districts: getDistrictMetrics(now),
     events: getDefaultEvents(now),
-    activeTransportUnits: 684,
-    averageSpeed: 24.8,
-    energyLoad: 73,
+    transport: { activeUnits: 684, averageSpeed: 24.8, sourceType: "modelled", updatedAt: now.toISOString() },
+    energy: { load: 73, sourceType: "modelled", updatedAt: now.toISOString() },
   };
 }
 
@@ -153,4 +152,3 @@ export async function getCitySnapshot(): Promise<CitySnapshot> {
     };
   }
 }
-

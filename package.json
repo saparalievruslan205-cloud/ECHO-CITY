@@ -9,10 +9,11 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
-    "test:unit": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/simulation.test.ts tests/report.test.ts tests/infrastructure.test.ts tests/api.test.mjs tests/rendered-html.test.mjs",
+    "test:unit": "node --import tsx --test tests/simulation.test.ts tests/report.test.ts tests/infrastructure.test.ts",
     "test:render": "node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

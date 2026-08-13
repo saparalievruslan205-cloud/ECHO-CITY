@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   try {
     await requireRole(request, ["admin"]);
     const db = await getD1();
-    const result = await db.prepare("SELECT * FROM events ORDER BY created_at DESC LIMIT 100").all();
+    const result = await db.prepare("SELECT id, title, description, category, severity, longitude, latitude, district_id AS districtId, source_url AS sourceUrl, source_type AS sourceType, starts_at AS startsAt, status, created_at AS createdAt, updated_at AS updatedAt FROM events ORDER BY created_at DESC LIMIT 100").all();
     return Response.json({ events: result.results });
   } catch (error) {
     return jsonError(error);
@@ -57,4 +57,3 @@ export async function PATCH(request: Request) {
     return jsonError(error);
   }
 }
-

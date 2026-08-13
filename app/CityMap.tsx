@@ -281,7 +281,10 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
         map.on("move", syncDeckCamera);
         map.on("resize", syncDeckCamera);
         const markReady = () => {
-          if (!disposed) setState("ready");
+          if (!disposed) {
+            setState("ready");
+            if (performance.getEntriesByName("echo-map-ready").length === 0) performance.mark("echo-map-ready");
+          }
         };
         map.once("render", markReady);
         readyTimer = window.setTimeout(markReady, 2500);
