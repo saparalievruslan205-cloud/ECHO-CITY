@@ -33,8 +33,8 @@ export function getDefaultEvents(at = new Date()): CityEvent[] {
   return [
     {
       id: "evt-chuy-repair",
-      title: "Работы на проспекте Чуй",
-      description: "На пересечении с улицей Исанова временно сужена проезжая часть.",
+      title: "Сценарий: работы на проспекте Чуй",
+      description: "Учебный сценарий сужения проезжей части у улицы Исанова.",
       category: "transport",
       severity: "warning",
       coordinates: [74.5872, 42.8757],
@@ -59,8 +59,8 @@ export function getDefaultEvents(at = new Date()): CityEvent[] {
     },
     {
       id: "evt-square",
-      title: "Городское событие на Ала-Тоо",
-      description: "Ожидается повышенный пешеходный поток и локальные ограничения движения.",
+      title: "Сценарий: событие на Ала-Тоо",
+      description: "Учебный сценарий повышенного пешеходного потока и локальных ограничений.",
       category: "event",
       severity: "info",
       coordinates: [74.6036, 42.8772],

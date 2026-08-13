@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Layer } from "@deck.gl/core";
-import type { CityEvent, ScenarioResult } from "@/lib/types";
+import type { CityEvent, ProblemType, ScenarioResult } from "@/lib/types";
 import { LoaderCircle, LocateFixed, MousePointer2 } from "lucide-react";
 
 type LayerKey = "transport" | "people" | "air" | "noise" | "energy" | "events";
@@ -12,22 +12,30 @@ interface CityMapProps {
   activeLayers: Set<LayerKey>;
   events: CityEvent[];
   problemPoint: [number, number] | null;
+  problemType: ProblemType;
+  problemRadius: number;
   result: ScenarioResult | null;
   pickMode: boolean;
   onPick: (coordinates: [number, number]) => void;
   onCancelPick: () => void;
 }
 
-const transportTrips = [
-  { path: [[74.481, 42.875], [74.53, 42.876], [74.58, 42.876], [74.63, 42.877], [74.69, 42.878]], timestamps: [0, 120, 240, 360, 480] },
-  { path: [[74.602, 42.802], [74.601, 42.835], [74.601, 42.872], [74.602, 42.905], [74.603, 42.934]], timestamps: [0, 110, 220, 330, 440] },
-  { path: [[74.512, 42.82], [74.545, 42.843], [74.585, 42.861], [74.626, 42.88], [74.665, 42.903]], timestamps: [0, 100, 200, 300, 400] },
-] as Array<{ path: [number, number][]; timestamps: number[] }>;
+type Trip = { path: [number, number][]; timestamps: number[] };
 
-const peopleTrips = [
-  { path: [[74.591, 42.873], [74.597, 42.876], [74.604, 42.877], [74.612, 42.879]], timestamps: [0, 150, 300, 450] },
-  { path: [[74.616, 42.842], [74.611, 42.853], [74.607, 42.865], [74.604, 42.877]], timestamps: [20, 150, 280, 410] },
-] as Array<{ path: [number, number][]; timestamps: number[] }>;
+type TransportationFeature = {
+  properties: Record<string, unknown> | null;
+  geometry: {
+    type: string;
+    coordinates: unknown;
+  };
+};
+
+const problemLabels: Record<ProblemType, string> = {
+  traffic: "Пробка",
+  closure: "Перекрытие",
+  pollution: "Загрязнение",
+  noise: "Шумовая зона",
+};
 
 const fieldPoints = [
   { position: [74.52, 42.86], air: 70, noise: 44, energy: 62 },
@@ -46,7 +54,7 @@ function supportsWebGL() {
   }
 }
 
-export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick, onCancelPick }: CityMapProps) {
+export function CityMap({ theme, activeLayers, events, problemPoint, problemType, problemRadius, result, pickMode, onPick, onCancelPick }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const deckContainerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onPick);
@@ -54,6 +62,8 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
   const eventsRef = useRef(events);
   const resultRef = useRef(result);
   const problemRef = useRef(problemPoint);
+  const problemTypeRef = useRef(problemType);
+  const problemRadiusRef = useRef(problemRadius);
   const [state, setState] = useState<"loading" | "ready" | "unsupported" | "error">("loading");
 
   useEffect(() => {
@@ -62,7 +72,9 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
     eventsRef.current = events;
     resultRef.current = result;
     problemRef.current = problemPoint;
-  }, [activeLayers, events, onPick, problemPoint, result]);
+    problemTypeRef.current = problemType;
+    problemRadiusRef.current = problemRadius;
+  }, [activeLayers, events, onPick, problemPoint, problemRadius, problemType, result]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -78,10 +90,12 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
     let contextCanvas: HTMLCanvasElement | null = null;
     let map: import("maplibre-gl").Map | null = null;
     let deck: import("@deck.gl/core").Deck | null = null;
+    let transportTrips: Trip[] = [];
+    let peopleTrips: Trip[] = [];
 
     async function mount() {
       try {
-        const [maplibregl, { Deck }, { ScatterplotLayer }, { TripsLayer }] = await Promise.all([
+        const [maplibregl, { Deck }, { ScatterplotLayer, TextLayer }, { TripsLayer }] = await Promise.all([
           import("maplibre-gl"),
           import("@deck.gl/core"),
           import("@deck.gl/layers"),
@@ -96,9 +110,9 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
           container: containerRef.current,
           style: theme === "dark" ? "https://tiles.openfreemap.org/styles/dark" : "https://tiles.openfreemap.org/styles/positron",
           center: [74.595, 42.866],
-          zoom: 12.1,
-          pitch: 55,
-          bearing: -14,
+          zoom: lowPowerMode ? 11.9 : 12.35,
+          pitch: lowPowerMode ? 38 : 48,
+          bearing: -10,
           canvasContextAttributes: { antialias: !lowPowerMode },
           attributionControl: false,
         });
@@ -113,11 +127,11 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
               id: "air-field",
               data: fieldPoints,
               getPosition: (d: typeof fieldPoints[number]) => d.position,
-              getRadius: (d: typeof fieldPoints[number]) => 700 + d.air * 11,
-              getFillColor: (d: typeof fieldPoints[number]) => d.air > 80 ? [255, 98, 84, 48] : [70, 224, 170, 38],
+              getRadius: (d: typeof fieldPoints[number]) => 420 + d.air * 3,
+              getFillColor: (d: typeof fieldPoints[number]) => d.air > 80 ? [255, 168, 68, 26] : [70, 224, 170, 20],
               radiusUnits: "meters",
               stroked: true,
-              getLineColor: [78, 224, 192, 90],
+              getLineColor: [78, 224, 192, 54],
               lineWidthMinPixels: 1,
               pickable: false,
             }));
@@ -127,7 +141,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
               id: "noise-field",
               data: fieldPoints,
               getPosition: (d: typeof fieldPoints[number]) => d.position,
-              getRadius: (d: typeof fieldPoints[number]) => 300 + d.noise * 6,
+              getRadius: (d: typeof fieldPoints[number]) => 260 + d.noise * 3,
               getFillColor: [255, 168, 68, 38],
               radiusUnits: "meters",
               pickable: false,
@@ -150,8 +164,8 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
             layers.push(new TripsLayer({
               id: "transport-trips",
               data: transportTrips,
-              getPath: (d: typeof transportTrips[number]) => d.path,
-              getTimestamps: (d: typeof transportTrips[number]) => d.timestamps,
+              getPath: (d: Trip) => d.path,
+              getTimestamps: (d: Trip) => d.timestamps,
               getColor: [30, 205, 255, 230],
               widthMinPixels: 3.2,
               capRounded: true,
@@ -165,8 +179,8 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
             layers.push(new TripsLayer({
               id: "people-trips",
               data: peopleTrips,
-              getPath: (d: typeof peopleTrips[number]) => d.path,
-              getTimestamps: (d: typeof peopleTrips[number]) => d.timestamps,
+              getPath: (d: Trip) => d.path,
+              getTimestamps: (d: Trip) => d.timestamps,
               getColor: [95, 255, 185, 230],
               widthMinPixels: 2,
               trailLength: 90,
@@ -175,29 +189,78 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
           }
           if (visible.has("events")) {
             layers.push(new ScatterplotLayer({
-              id: "city-events",
+              id: "city-events-halo",
               data: eventsRef.current,
               getPosition: (d: CityEvent) => d.coordinates,
-              getRadius: 135,
-              getFillColor: (d: CityEvent) => d.severity === "critical" ? [255, 78, 80, 230] : d.severity === "warning" ? [255, 174, 74, 230] : [66, 212, 255, 220],
+              getRadius: 170,
+              getFillColor: (d: CityEvent) => d.severity === "critical" ? [255, 78, 80, 30] : d.severity === "warning" ? [255, 174, 74, 26] : [66, 212, 255, 24],
+              radiusUnits: "meters",
+              pickable: false,
+            }));
+            layers.push(new ScatterplotLayer({
+              id: "city-events-dot",
+              data: eventsRef.current,
+              getPosition: (d: CityEvent) => d.coordinates,
+              getRadius: 58,
+              getFillColor: (d: CityEvent) => d.severity === "critical" ? [255, 78, 80, 245] : d.severity === "warning" ? [255, 174, 74, 245] : [66, 212, 255, 240],
               radiusUnits: "meters",
               stroked: true,
               getLineColor: [255, 255, 255, 220],
               lineWidthMinPixels: 2,
-              pickable: true,
+              pickable: false,
             }));
           }
           if (problemRef.current) {
             layers.push(new ScatterplotLayer({
-              id: "problem-point",
+              id: "problem-impact-zone",
               data: [{ position: problemRef.current }],
               getPosition: (d: { position: [number, number] }) => d.position,
-              getRadius: resultRef.current ? resultRef.current.request.problem.radius : 320,
-              getFillColor: [255, 78, 80, resultRef.current ? 44 : 66],
-              getLineColor: [255, 92, 86, 245],
+              getRadius: resultRef.current?.request.problem.radius ?? problemRadiusRef.current,
+              getFillColor: [255, 78, 80, resultRef.current ? 28 : 38],
+              getLineColor: [255, 92, 86, 190],
+              radiusUnits: "meters",
+              stroked: true,
+              lineWidthMinPixels: 2,
+            }));
+            if (resultRef.current) {
+              layers.push(new ScatterplotLayer({
+                id: "solution-impact-zone",
+                data: [{ position: problemRef.current }],
+                getPosition: (d: { position: [number, number] }) => d.position,
+                getRadius: resultRef.current.request.problem.radius * 0.72,
+                getFillColor: [70, 224, 170, 18],
+                getLineColor: [70, 224, 170, 220],
+                radiusUnits: "meters",
+                stroked: true,
+                lineWidthMinPixels: 3,
+              }));
+            }
+            layers.push(new ScatterplotLayer({
+              id: "problem-marker",
+              data: [{ position: problemRef.current }],
+              getPosition: (d: { position: [number, number] }) => d.position,
+              getRadius: 72,
+              getFillColor: [255, 78, 80, 250],
+              getLineColor: [255, 255, 255, 245],
               radiusUnits: "meters",
               stroked: true,
               lineWidthMinPixels: 3,
+            }));
+            layers.push(new TextLayer({
+              id: "problem-label",
+              data: [{ position: problemRef.current, label: resultRef.current ? "Прогноз решения" : problemLabels[problemTypeRef.current] }],
+              getPosition: (d: { position: [number, number]; label: string }) => d.position,
+              getText: (d: { position: [number, number]; label: string }) => d.label,
+              getColor: resultRef.current ? [70, 224, 170, 255] : [255, 255, 255, 255],
+              getSize: 13,
+              sizeUnits: "pixels",
+              getPixelOffset: [0, -24],
+              getTextAnchor: "middle",
+              getAlignmentBaseline: "bottom",
+              fontWeight: 700,
+              outlineColor: [5, 18, 30, 240],
+              outlineWidth: 3,
+              billboard: true,
             }));
           }
           return layers;
@@ -234,10 +297,9 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
             if (performance.getEntriesByName("echo-map-ready").length === 0) performance.mark("echo-map-ready");
           }
         };
-        map.once("render", markReady);
         readyTimer = window.setTimeout(() => {
           if (!disposed && !mapReady) setState("error");
-        }, 10_000);
+        }, 15_000);
         map.on("load", () => {
           if (!map || disposed) return;
           map.resize();
@@ -249,18 +311,68 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
                 source: "openmaptiles",
                 "source-layer": "building",
                 type: "fill-extrusion",
-                minzoom: 13,
+                minzoom: 12,
                 paint: {
                   "fill-extrusion-color": theme === "dark" ? "#122b40" : "#cbd7df",
                   "fill-extrusion-height": ["coalesce", ["get", "render_height"], ["get", "height"], 10],
                   "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-                  "fill-extrusion-opacity": 0.78,
+                  "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.35, 13, 0.72, 15, 0.86],
                 },
               }, firstLabel?.id);
             }
           } catch {
             // The public style may change its source-layer names; the map remains usable.
           }
+        });
+        const rebuildNetworkTrips = () => {
+          if (!map || !map.getSource("openmaptiles")) return;
+          try {
+            const features = map.querySourceFeatures("openmaptiles", { sourceLayer: "transportation" }) as TransportationFeature[];
+            const roads: [number, number][][] = [];
+            const walkways: [number, number][][] = [];
+            const seen = new Set<string>();
+            for (const feature of features) {
+              const properties = feature.properties ?? {};
+              const classification = `${String(properties.class ?? "")} ${String(properties.subclass ?? "")}`.toLowerCase();
+              const target = /path|pedestrian|footway|steps/.test(classification)
+                ? walkways
+                : /motorway|trunk|primary|secondary|tertiary|minor|service|street/.test(classification)
+                  ? roads
+                  : null;
+              if (!target) continue;
+              const geometryLines: unknown[] = feature.geometry.type === "LineString"
+                ? [feature.geometry.coordinates]
+                : feature.geometry.type === "MultiLineString" && Array.isArray(feature.geometry.coordinates)
+                  ? feature.geometry.coordinates
+                  : [];
+              for (const rawLine of geometryLines) {
+                if (!Array.isArray(rawLine)) continue;
+                const line = rawLine.filter((point): point is [number, number] => Array.isArray(point) && typeof point[0] === "number" && typeof point[1] === "number");
+                if (line.length < 2) continue;
+                const key = `${line[0][0].toFixed(5)},${line[0][1].toFixed(5)}-${line.at(-1)![0].toFixed(5)},${line.at(-1)![1].toFixed(5)}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                target.push(line);
+              }
+            }
+            const toTrips = (lines: [number, number][][], limit: number) => lines
+              .sort((a, b) => b.length - a.length)
+              .slice(0, limit)
+              .map((path, index) => {
+                const start = (index * 19) % 120;
+                const duration = 250 + Math.min(120, path.length * 6);
+                return { path, timestamps: path.map((_, pointIndex) => start + (duration * pointIndex) / Math.max(1, path.length - 1)) };
+              });
+            transportTrips = toTrips(roads, lowPowerMode ? 16 : 34);
+            peopleTrips = toTrips(walkways, lowPowerMode ? 8 : 18);
+          } catch {
+            transportTrips = [];
+            peopleTrips = [];
+          }
+        };
+        map.on("idle", rebuildNetworkTrips);
+        map.once("idle", () => {
+          rebuildNetworkTrips();
           markReady();
         });
         map.on("click", (event) => callbackRef.current([event.lngLat.lng, event.lngLat.lat]));

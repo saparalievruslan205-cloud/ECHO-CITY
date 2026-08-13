@@ -23,7 +23,7 @@ test("server-renders the ECHO CITY dashboard shell", async () => {
   assert.match(html, /цифровой двойник Бишкека/i);
   assert.match(html, /id="city-main"/);
   assert.match(html, /aria-label="Основные разделы"/);
-  assert.match(html, /Работы на проспекте Чуй/);
+  assert.match(html, /Сценарий: работы на проспекте Чуй/);
   assert.match(html, /href="\/signin-with-chatgpt\?return_to=%2F"/);
   assert.doesNotMatch(html, /--:--:--|<div hidden/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);

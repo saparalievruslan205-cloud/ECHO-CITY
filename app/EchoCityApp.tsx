@@ -10,7 +10,6 @@ import {
   BusFront,
   ChartNoAxesCombined,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   Download,
@@ -124,13 +123,13 @@ const navItems: Array<{ id: SectionKey; label: string; icon: typeof Map }> = [
   { id: "admin", label: "Управление", icon: Settings2 },
 ];
 
-const layers: Array<{ id: LayerKey; label: string; icon: typeof BusFront; color: string }> = [
-  { id: "transport", label: "Транспорт", icon: BusFront, color: "var(--accent-cyan)" },
-  { id: "people", label: "Люди", icon: Users, color: "var(--accent-green)" },
-  { id: "air", label: "Воздух", icon: AirVent, color: "var(--accent-mint)" },
-  { id: "noise", label: "Шум", icon: Volume2, color: "var(--accent-amber)" },
-  { id: "energy", label: "Энергия", icon: Zap, color: "var(--accent-violet)" },
-  { id: "events", label: "События", icon: Bell, color: "var(--status-critical)" },
+const layers: Array<{ id: LayerKey; label: string; sourceLabel: string; icon: typeof BusFront; color: string }> = [
+  { id: "transport", label: "Транспорт", sourceLabel: "модель · по дорогам OSM", icon: BusFront, color: "var(--accent-cyan)" },
+  { id: "people", label: "Люди", sourceLabel: "модель · пешеходные пути", icon: Users, color: "var(--accent-green)" },
+  { id: "air", label: "Воздух", sourceLabel: "фон Open-Meteo", icon: AirVent, color: "var(--accent-mint)" },
+  { id: "noise", label: "Шум", sourceLabel: "модель", icon: Volume2, color: "var(--accent-amber)" },
+  { id: "energy", label: "Энергия", sourceLabel: "модель", icon: Zap, color: "var(--accent-violet)" },
+  { id: "events", label: "События", sourceLabel: "сигналы и сценарии", icon: Bell, color: "var(--status-critical)" },
 ];
 
 const problemOptions: Array<{ id: ProblemType; label: string; icon: typeof TrafficCone }> = [
@@ -181,7 +180,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
   const [rightPanel, setRightPanel] = useState(true);
   const [snapshot, setSnapshot] = useState<CitySnapshot>(() => getFallbackSnapshot(true));
   const [connection, setConnection] = useState<"live" | "reconnecting" | "polling">("reconnecting");
-  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(layers.map((layer) => layer.id)));
+  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(["transport", "air", "events"]));
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [pickMode, setPickMode] = useState(false);
   const [scenario, setScenario] = useState<ScenarioRequest>(initialScenario);
@@ -284,6 +283,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
   }, []);
 
   const bestDistrict = useMemo(() => [...snapshot.districts].sort((a, b) => b.values.comfort - a.values.comfort)[0], [snapshot.districts]);
+  const visibleNavItems = useMemo(() => navItems.filter((item) => item.id !== "admin" || user?.role === "admin"), [user?.role]);
   const syncTime = useMemo(() => {
     const updatedAt = new Date(snapshot.observedAt);
     return Number.isNaN(updatedAt.getTime()) ? "нет данных" : formatTime(updatedAt);
@@ -399,7 +399,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
         </div>
 
         <nav className="mx-auto hidden h-full items-center gap-1 lg:flex" aria-label="Основные разделы">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button key={item.id} type="button" onClick={() => setSection(item.id)} className={cn("relative flex h-full items-center gap-2 px-3.5 text-xs font-semibold text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", section === item.id && "text-[var(--text-primary)]")}>
@@ -422,11 +422,10 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
             {mounted && theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
           </Button>
           {user ? (
-            <button type="button" className="hidden h-10 items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 pr-3 sm:flex">
+            <div className="hidden h-10 items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2.5 pr-3 sm:flex" aria-label={`Выполнен вход: ${user.displayName}`}>
               <span className="grid size-6 place-items-center rounded-full bg-[var(--accent-cyan)]/16 text-[10px] font-bold text-[var(--accent-cyan)]">{user.displayName.slice(0, 1).toUpperCase()}</span>
               <span className="max-w-24 truncate text-xs font-semibold">{user.displayName}</span>
-              <ChevronDown className="size-3 text-[var(--text-tertiary)]" />
-            </button>
+            </div>
           ) : (
             <Button asChild size="sm" className="hidden sm:inline-flex"><a href={signInPath}>Войти</a></Button>
           )}
@@ -440,6 +439,8 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
           activeLayers={activeLayers}
           events={snapshot.events}
           problemPoint={simulatorOpen || pickMode || result ? scenario.problem.coordinates : null}
+          problemType={scenario.problem.type}
+          problemRadius={scenario.problem.radius}
           result={result}
           pickMode={pickMode}
           onPick={handleMapPick}
@@ -450,7 +451,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
           <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3.5">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Слои города</p>
-              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{activeLayers.size} активных потоков</p>
+              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{activeLayers.size} активных слоя</p>
             </div>
             <Waves className="size-4 text-[var(--accent-cyan)]" />
           </div>
@@ -461,7 +462,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
               return (
                 <button key={layer.id} type="button" aria-pressed={active} onClick={() => toggleLayer(layer.id)} className={cn("flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", active ? "bg-[var(--surface-hover)] text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]")}>
                   <span className="grid size-7 place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)]" style={{ color: layer.color }}><Icon className="size-3.5" /></span>
-                  <span className="flex-1 text-xs font-semibold">{layer.label}</span>
+                  <span className="min-w-0 flex-1"><span className="block text-xs font-semibold">{layer.label}</span><span className="mt-0.5 block truncate text-[9px] text-[var(--text-tertiary)]">{layer.sourceLabel}</span></span>
                   <span className={cn("relative h-4 w-7 rounded-full border transition-colors", active ? "border-[var(--accent-cyan)]/35 bg-[var(--accent-cyan)]/22" : "border-[var(--border-strong)] bg-[var(--surface-muted)]")}><span className={cn("absolute top-0.5 size-2.5 rounded-full transition-transform", active ? "translate-x-3 bg-[var(--accent-cyan)]" : "translate-x-0.5 bg-[var(--text-tertiary)]")} /></span>
                 </button>
               );
@@ -521,7 +522,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
             <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent="var(--accent-violet)" />
           </div>
           <div className="border-t border-[var(--border-subtle)] p-4">
-            <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">События</span><Badge>{snapshot.events.length} активных</Badge></div>
+            <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">События и сигналы</span><Badge>{snapshot.events.length}</Badge></div>
             <CityEventsList events={snapshot.events} />
           </div>
           <div className="border-t border-[var(--border-subtle)] p-4">
@@ -540,7 +541,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
 
         <div className="absolute inset-x-3 bottom-3 z-30 md:hidden">
           <Panel className="flex items-center justify-around px-1 py-1.5">
-            {navItems.slice(0, 4).map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={cn("flex min-h-12 min-w-14 flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-semibold text-[var(--text-tertiary)]", section === item.id && "bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]")}><Icon className="size-4" />{item.label}</button>; })}
+            {visibleNavItems.slice(0, 4).map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => setSection(item.id)} className={cn("flex min-h-12 min-w-14 flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-semibold text-[var(--text-tertiary)]", section === item.id && "bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]")}><Icon className="size-4" />{item.label}</button>; })}
             <button type="button" onClick={() => setSimulatorOpen(true)} className="grid size-12 place-items-center rounded-xl bg-[var(--accent-cyan)] text-[var(--action-primary-fg)] shadow-[var(--shadow-action)]" aria-label="Новый сценарий"><Plus className="size-5" /></button>
           </Panel>
         </div>
@@ -605,7 +606,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
       {mobileMenu && (
         <div className="fixed inset-0 z-[70] bg-[var(--surface-panel-strong)] p-5 lg:hidden">
           <div className="flex items-center justify-between"><span className="font-[var(--font-display)] font-bold tracking-[0.12em]">ECHO CITY</span><Button variant="ghost" size="icon" aria-label="Закрыть меню" onClick={() => setMobileMenu(false)}><X className="size-5" /></Button></div>
-          <nav className="mt-8 space-y-2" aria-label="Мобильное меню">{navItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => { setSection(item.id); setMobileMenu(false); }} className="flex min-h-14 w-full items-center gap-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-left text-sm font-semibold"><Icon className="size-4 text-[var(--accent-cyan)]" />{item.label}<ChevronRight className="ml-auto size-4 text-[var(--text-tertiary)]" /></button>; })}</nav>
+          <nav className="mt-8 space-y-2" aria-label="Мобильное меню">{visibleNavItems.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => { setSection(item.id); setMobileMenu(false); }} className="flex min-h-14 w-full items-center gap-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-left text-sm font-semibold"><Icon className="size-4 text-[var(--accent-cyan)]" />{item.label}<ChevronRight className="ml-auto size-4 text-[var(--text-tertiary)]" /></button>; })}</nav>
           {!user && <Button asChild className="mt-6 w-full"><a href={signInPath}>Войти через ChatGPT</a></Button>}
         </div>
       )}
@@ -620,10 +621,10 @@ function CityEventsList({ events }: { events: CitySnapshot["events"] }) {
   return (
     <div className="space-y-2">
       {events.slice(0, 3).map((event) => (
-        <button key={event.id} type="button" className="flex w-full gap-3 rounded-xl border border-transparent p-2 text-left hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
+        <a key={event.id} href={event.sourceUrl} target="_blank" rel="noreferrer" className="flex w-full gap-3 rounded-xl border border-transparent p-2 text-left hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
           <span className={cn("mt-1 size-2 shrink-0 rounded-full", event.severity === "critical" ? "bg-[var(--status-critical)]" : event.severity === "warning" ? "bg-[var(--accent-amber)]" : "bg-[var(--accent-cyan)]")} />
-          <span><span className="block text-xs font-semibold leading-snug">{event.title}</span><span className="mt-1 block text-[10px] leading-relaxed text-[var(--text-tertiary)]">{event.description}</span></span>
-        </button>
+          <span><span className="block text-xs font-semibold leading-snug">{event.title}</span><span className="mt-1 block text-[10px] leading-relaxed text-[var(--text-tertiary)]">{event.description}</span><span className="mt-1.5 block text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--accent-cyan)]">{event.sourceType === "observed" ? "Наблюдение" : "Модель"} · открыть источник ↗</span></span>
+        </a>
       ))}
     </div>
   );
