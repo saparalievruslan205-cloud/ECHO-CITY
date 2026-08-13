@@ -12,6 +12,7 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  CircleHelp,
   Download,
   FileChartColumnIncreasing,
   Gauge,
@@ -67,8 +68,10 @@ import { cn } from "@/lib/utils";
 
 const AnalyticsCharts = lazy(() => import("./AnalyticsCharts").then((module) => ({ default: module.AnalyticsCharts })));
 
-type LayerKey = "transport" | "people" | "air" | "noise" | "energy" | "events";
+type LayerKey = "traffic" | "transit" | "air" | "noise" | "energy" | "events";
 type SectionKey = "map" | "analytics" | "districts" | "scenarios" | "reports" | "admin";
+type DistrictKey = "oktyabrskiy" | "pervomayskiy" | "sverdlovskiy" | "leninskiy";
+type MetricTone = "good" | "warning" | "critical" | "neutral";
 
 interface UserPreview {
   userId: string;
@@ -124,13 +127,18 @@ const navItems: Array<{ id: SectionKey; label: string; icon: typeof Map }> = [
 ];
 
 const layers: Array<{ id: LayerKey; label: string; sourceLabel: string; icon: typeof BusFront; color: string }> = [
-  { id: "transport", label: "Транспорт", sourceLabel: "модель · по дорогам OSM", icon: BusFront, color: "var(--accent-cyan)" },
-  { id: "people", label: "Люди", sourceLabel: "модель · пешеходные пути", icon: Users, color: "var(--accent-green)" },
-  { id: "air", label: "Воздух", sourceLabel: "фон Open-Meteo", icon: AirVent, color: "var(--accent-mint)" },
-  { id: "noise", label: "Шум", sourceLabel: "модель", icon: Volume2, color: "var(--accent-amber)" },
-  { id: "energy", label: "Энергия", sourceLabel: "модель", icon: Zap, color: "var(--accent-violet)" },
-  { id: "events", label: "События", sourceLabel: "сигналы и сценарии", icon: Bell, color: "var(--status-critical)" },
+  { id: "air", label: "Экология и PM2.5", sourceLabel: "Open-Meteo + модель", icon: Leaf, color: "var(--accent-green)" },
+  { id: "traffic", label: "Трафик и пробки", sourceLabel: "модель · дороги OSM", icon: TrafficCone, color: "var(--accent-amber)" },
+  { id: "energy", label: "Электросети", sourceLabel: "модель нагрузки", icon: Zap, color: "var(--accent-violet)" },
+  { id: "transit", label: "Общественный транспорт", sourceLabel: "модель · маршруты по дорогам", icon: BusFront, color: "var(--accent-cyan)" },
 ];
+
+const districtMetrics: Record<DistrictKey, { label: string; comfort: number; air: number; speed: number }> = {
+  oktyabrskiy: { label: "Октябрьский", comfort: 79, air: 72, speed: 24.8 },
+  pervomayskiy: { label: "Первомайский", comfort: 74, air: 85, speed: 19.5 },
+  sverdlovskiy: { label: "Свердловский", comfort: 68, air: 110, speed: 16.2 },
+  leninskiy: { label: "Ленинский", comfort: 71, air: 92, speed: 21.0 },
+};
 
 const problemOptions: Array<{ id: ProblemType; label: string; icon: typeof TrafficCone }> = [
   { id: "traffic", label: "Пробка", icon: TrafficCone },
@@ -171,6 +179,24 @@ function ratingColor(value: number) {
   return "var(--status-critical)";
 }
 
+function airStatus(value: number): { label: string; tone: MetricTone } {
+  if (value <= 50) return { label: "Отлично", tone: "good" };
+  if (value <= 100) return { label: "Умеренно", tone: "warning" };
+  return { label: "Низкое качество", tone: "critical" };
+}
+
+function speedStatus(value: number): { label: string; tone: MetricTone } {
+  if (value >= 25) return { label: "Свободно", tone: "good" };
+  if (value >= 15) return { label: "Заторы", tone: "warning" };
+  return { label: "Пробки", tone: "critical" };
+}
+
+function energyStatus(value: number): { label: string; tone: MetricTone } {
+  if (value < 70) return { label: "Норма", tone: "good" };
+  if (value <= 85) return { label: "Высокая", tone: "warning" };
+  return { label: "Перегрузка", tone: "critical" };
+}
+
 export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(() => () => undefined, () => true, () => false);
@@ -180,7 +206,9 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
   const [rightPanel, setRightPanel] = useState(true);
   const [snapshot, setSnapshot] = useState<CitySnapshot>(() => getFallbackSnapshot(true));
   const [connection, setConnection] = useState<"live" | "reconnecting" | "polling">("reconnecting");
-  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(["transport", "air", "events"]));
+  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(["air", "traffic", "transit"]));
+  const [selectedDistrict, setSelectedDistrict] = useState<DistrictKey>("oktyabrskiy");
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [pickMode, setPickMode] = useState(false);
   const [scenario, setScenario] = useState<ScenarioRequest>(initialScenario);
@@ -282,7 +310,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
     };
   }, []);
 
-  const bestDistrict = useMemo(() => [...snapshot.districts].sort((a, b) => b.values.comfort - a.values.comfort)[0], [snapshot.districts]);
+  const district = districtMetrics[selectedDistrict];
   const visibleNavItems = useMemo(() => navItems.filter((item) => item.id !== "admin" || user?.role === "admin"), [user?.role]);
   const syncTime = useMemo(() => {
     const updatedAt = new Date(snapshot.observedAt);
@@ -434,6 +462,8 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
             <span className="h-3 w-px bg-[var(--border-subtle)]" />
             <span className="font-mono text-[11px] text-[var(--text-primary)]" title="Время последнего снимка данных">{syncTime}</span>
           </div>
+          <Button variant="ghost" size="sm" className="hidden md:inline-flex" onClick={() => setAboutOpen(true)}><CircleHelp className="size-4" /> О платформе</Button>
+          <Button variant="ghost" size="icon" className="md:hidden" aria-label="О платформе" onClick={() => setAboutOpen(true)}><CircleHelp className="size-4" /></Button>
           <Button variant="ghost" size="icon" aria-label={theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {mounted && theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
           </Button>
@@ -449,7 +479,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
         </div>
       </header>
 
-      <main id="city-main" tabIndex={-1} className="absolute inset-0 pt-[72px] focus:outline-none">
+      <main id="city-main" tabIndex={-1} className="absolute inset-x-0 bottom-7 top-0 pt-[72px] focus:outline-none">
         <CityMap
           theme={theme}
           activeLayers={activeLayers}
@@ -467,7 +497,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
           <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3.5">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Слои города</p>
-              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{activeLayers.size} активных слоя</p>
+              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{layers.filter((layer) => activeLayers.has(layer.id)).length} активных слоя</p>
             </div>
             <Waves className="size-4 text-[var(--accent-cyan)]" />
           </div>
@@ -504,7 +534,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
             <button type="button" aria-label="Закрыть панель" className="absolute inset-x-0 bottom-[76px] top-[128px] z-[19] bg-[var(--overlay-scrim)]/35 lg:hidden" onClick={() => setMobilePanel(null)} />
             <Panel role="region" aria-label={mobilePanel === "layers" ? "Слои города" : "Город сейчас"} className="absolute inset-x-3 bottom-[84px] z-30 max-h-[52dvh] overflow-y-auto p-4 lg:hidden">
               <div className="mb-3 flex items-center justify-between">
-                <div><p className="text-sm font-bold">{mobilePanel === "layers" ? "Слои города" : "Город сейчас"}</p><p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">{mobilePanel === "layers" ? `${activeLayers.size} активных слоёв` : `Снимок ${syncTime}`}</p></div>
+                <div><p className="text-sm font-bold">{mobilePanel === "layers" ? "Слои города" : "Город сейчас"}</p><p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">{mobilePanel === "layers" ? `${layers.filter((layer) => activeLayers.has(layer.id)).length} активных слоёв` : `Снимок ${syncTime}`}</p></div>
                 <Button variant="ghost" size="icon" aria-label="Закрыть панель" onClick={() => setMobilePanel(null)}><X className="size-4" /></Button>
               </div>
               {mobilePanel === "layers" ? (
@@ -513,11 +543,12 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <DistrictSwitcher value={selectedDistrict} onChange={setSelectedDistrict} />
                   <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-[var(--border-subtle)]">
-                    <KpiCell icon={Thermometer} label="Температура" value={`${Math.round(snapshot.weather.temperature)}°`} meta={`ветер ${Math.round(snapshot.weather.windSpeed)} км/ч`} accent="var(--accent-cyan)" />
-                    <KpiCell icon={AirVent} label="Воздух" value={`${Math.round(snapshot.air.aqi)}`} meta={`PM2.5 · ${Math.round(snapshot.air.pm25)}`} accent="var(--accent-green)" />
-                    <KpiCell icon={Gauge} label="Скорость" value={`${snapshot.transport.averageSpeed}`} meta="км/ч · модель" accent="var(--accent-amber)" />
-                    <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent="var(--accent-violet)" />
+                    <KpiCell icon={Thermometer} label="Температура" value={`${Math.round(snapshot.weather.temperature)}°`} meta={`ветер ${Math.round(snapshot.weather.windSpeed)} км/ч`} accent="var(--accent-cyan)" status={{ label: "Погода", tone: "neutral" }} />
+                    <KpiCell icon={AirVent} label="Воздух" value={`${district.air}`} meta="AQI · модель района" accent={district.air > 100 ? "var(--status-critical)" : district.air > 50 ? "var(--accent-amber)" : "var(--accent-green)"} status={airStatus(district.air)} />
+                    <KpiCell icon={Gauge} label="Скорость" value={`${district.speed}`} meta="км/ч · модель" accent={district.speed >= 25 ? "var(--accent-green)" : district.speed >= 15 ? "var(--accent-amber)" : "var(--status-critical)"} status={speedStatus(district.speed)} />
+                    <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent={snapshot.energy.load > 85 ? "var(--status-critical)" : snapshot.energy.load >= 70 ? "var(--accent-amber)" : "var(--accent-green)"} status={energyStatus(snapshot.energy.load)} />
                   </div>
                   <CityEventsList events={snapshot.events} />
                 </div>
@@ -531,18 +562,19 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
             <div className="flex items-center gap-2"><Radar className="size-4 text-[var(--accent-cyan)]" /><span className="text-xs font-bold">Город сейчас</span></div>
             <button type="button" aria-label="Скрыть панель" className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]" onClick={() => setRightPanel(false)}><PanelLeftClose className="size-4 rotate-180" /></button>
           </div>
+          <div className="border-b border-[var(--border-subtle)] px-4 py-3"><DistrictSwitcher value={selectedDistrict} onChange={setSelectedDistrict} /></div>
           <div className="grid grid-cols-2 gap-px bg-[var(--border-subtle)]">
-            <KpiCell icon={Thermometer} label="Температура" value={`${Math.round(snapshot.weather.temperature)}°`} meta={`ветер ${Math.round(snapshot.weather.windSpeed)} км/ч`} accent="var(--accent-cyan)" />
-            <KpiCell icon={AirVent} label="Воздух" value={`${Math.round(snapshot.air.aqi)}`} meta={`PM2.5 · ${Math.round(snapshot.air.pm25)}`} accent={snapshot.air.aqi > 80 ? "var(--status-critical)" : "var(--accent-green)"} />
-            <KpiCell icon={Gauge} label="Скорость" value={`${snapshot.transport.averageSpeed}`} meta="км/ч · модель" accent="var(--accent-amber)" />
-            <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent="var(--accent-violet)" />
+            <KpiCell icon={Thermometer} label="Температура" value={`${Math.round(snapshot.weather.temperature)}°`} meta={`ветер ${Math.round(snapshot.weather.windSpeed)} км/ч`} accent="var(--accent-cyan)" status={{ label: "Погода", tone: "neutral" }} />
+            <KpiCell icon={AirVent} label="Воздух" value={`${district.air}`} meta="AQI · модель района" accent={district.air > 100 ? "var(--status-critical)" : district.air > 50 ? "var(--accent-amber)" : "var(--accent-green)"} status={airStatus(district.air)} />
+            <KpiCell icon={Gauge} label="Скорость" value={`${district.speed}`} meta="км/ч · модель" accent={district.speed >= 25 ? "var(--accent-green)" : district.speed >= 15 ? "var(--accent-amber)" : "var(--status-critical)"} status={speedStatus(district.speed)} />
+            <KpiCell icon={Zap} label="Энергия" value={`${snapshot.energy.load}%`} meta="нагрузка сети" accent={snapshot.energy.load > 85 ? "var(--status-critical)" : snapshot.energy.load >= 70 ? "var(--accent-amber)" : "var(--accent-green)"} status={energyStatus(snapshot.energy.load)} />
           </div>
           <div className="border-t border-[var(--border-subtle)] p-4">
             <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">События и сигналы</span><Badge>{snapshot.events.length}</Badge></div>
             <CityEventsList events={snapshot.events} />
           </div>
           <div className="border-t border-[var(--border-subtle)] p-4">
-            <div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Лучший комфорт</p><p className="mt-1 text-sm font-bold">{bestDistrict?.districtName}</p></div><div className="grid size-11 place-items-center rounded-full border-4 border-[var(--accent-green)]/22 text-sm font-bold text-[var(--accent-green)]">{bestDistrict?.values.comfort}</div></div>
+            <div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Комфорт района</p><p className="mt-1 text-sm font-bold">{district.label}</p></div><div className="grid size-11 place-items-center rounded-full border-4 border-[var(--accent-green)]/22 text-sm font-bold text-[var(--accent-green)]">{district.comfort}</div></div>
           </div>
         </Panel>
         {!rightPanel && <Button variant="secondary" size="icon" className="absolute right-4 top-[88px] z-20 hidden xl:inline-flex" aria-label="Показать панель" onClick={() => setRightPanel(true)}><Activity className="size-4" /></Button>}
@@ -591,6 +623,27 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
           />
         )}
       </main>
+
+      <footer className="absolute inset-x-0 bottom-0 z-40 flex h-7 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--surface-header)] px-3 text-[9px] font-semibold text-[var(--text-tertiary)] backdrop-blur-xl md:px-5" aria-label="Информация об источниках данных">
+        <span>Данные: Демо-режим (Симуляция)</span>
+        <span>ECHO CITY © 2026</span>
+      </footer>
+
+      <Dialog.Root open={aboutOpen} onOpenChange={setAboutOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[80] bg-[var(--overlay-scrim)] backdrop-blur-[3px] data-[state=open]:animate-[echo-fade-in_180ms_ease-out]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[81] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[24px] border border-[var(--border-subtle)] bg-[var(--surface-panel-strong)] p-6 shadow-[var(--shadow-dialog)] focus:outline-none md:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--accent-cyan)]/12 text-[var(--accent-cyan)]"><Globe2 className="size-5" /></div>
+              <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label="Закрыть окно о платформе"><X className="size-4" /></Button></Dialog.Close>
+            </div>
+            <Dialog.Title className="mt-5 font-[var(--font-display)] text-xl font-bold">О платформе ECHO CITY</Dialog.Title>
+            <Dialog.Description className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">ECHO CITY — интерактивный концепт цифрового двойника Бишкека. Платформа агрегирует симулированные и реальные данные о качестве воздуха, дорожном трафике и энергетической нагрузке районов города в 3D-интерфейсе.</Dialog.Description>
+            <div className="mt-5 rounded-xl border border-[var(--accent-amber)]/25 bg-[var(--accent-amber)]/8 p-3 text-[11px] leading-5 text-[var(--text-secondary)]"><CircleAlert className="mr-2 inline size-3.5 text-[var(--accent-amber)]" />Это демонстрационный MVP. Модельные показатели не являются официальными городскими данными.</div>
+            <Dialog.Close asChild><Button className="mt-6 w-full">Понятно</Button></Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={simulatorOpen} onOpenChange={(open) => { setSimulatorOpen(open); if (!open) setPickMode(false); }}>
         <Dialog.Portal>
@@ -663,8 +716,22 @@ function CityEventsList({ events }: { events: CitySnapshot["events"] }) {
   );
 }
 
-function KpiCell({ icon: Icon, label, value, meta, accent }: { icon: typeof Gauge; label: string; value: string; meta: string; accent: string }) {
-  return <div className="bg-[var(--surface-panel)] p-3.5"><div className="mb-3 flex items-center justify-between"><span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">{label}</span><Icon className="size-3.5" style={{ color: accent }} /></div><div className="font-[var(--font-display)] text-xl font-bold tracking-[-0.04em]" style={{ color: accent }}>{value}</div><div className="mt-1 text-[9px] text-[var(--text-tertiary)]">{meta}</div></div>;
+function DistrictSwitcher({ value, onChange }: { value: DistrictKey; onChange: (value: DistrictKey) => void }) {
+  return <label className="block"><span className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Район Бишкека</span><select aria-label="Выберите район Бишкека" value={value} onChange={(event) => onChange(event.target.value as DistrictKey)} className="echo-input min-h-9 py-0 text-xs font-semibold">{Object.entries(districtMetrics).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>;
+}
+
+function MetricBadge({ status }: { status: { label: string; tone: MetricTone } }) {
+  const toneClass = {
+    good: "border-[var(--accent-green)]/30 bg-[var(--accent-green)]/12 text-[var(--accent-green)]",
+    warning: "border-[var(--accent-amber)]/30 bg-[var(--accent-amber)]/12 text-[var(--accent-amber)]",
+    critical: "border-[var(--status-critical)]/35 bg-[var(--status-critical)]/12 text-[var(--status-critical)]",
+    neutral: "border-[var(--accent-cyan)]/25 bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)]",
+  }[status.tone];
+  return <span className={cn("mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[0.08em]", toneClass)}><span className="size-1.5 rounded-full bg-current" />{status.label}</span>;
+}
+
+function KpiCell({ icon: Icon, label, value, meta, accent, status }: { icon: typeof Gauge; label: string; value: string; meta: string; accent: string; status: { label: string; tone: MetricTone } }) {
+  return <div className="bg-[var(--surface-panel)] p-3.5"><div className="mb-3 flex items-center justify-between"><span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">{label}</span><Icon className="size-3.5" style={{ color: accent }} /></div><div className="font-[var(--font-display)] text-xl font-bold tracking-[-0.04em]" style={{ color: accent }}>{value}</div><div className="mt-1 text-[9px] text-[var(--text-tertiary)]">{meta}</div><MetricBadge status={status} /></div>;
 }
 
 function SectionOverlay({ section, snapshot, user, result, scenarioHistory, onClose, onSimulate }: { section: SectionKey; snapshot: CitySnapshot; user: UserPreview | null; result: ScenarioResult | null; scenarioHistory: ScenarioResult[]; onClose: () => void; onSimulate: () => void }) {

@@ -5,7 +5,7 @@ import type { Layer } from "@deck.gl/core";
 import type { CityEvent, ProblemType, ScenarioResult } from "@/lib/types";
 import { LoaderCircle, LocateFixed, MousePointer2 } from "lucide-react";
 
-type LayerKey = "transport" | "people" | "air" | "noise" | "energy" | "events";
+type LayerKey = "traffic" | "transit" | "air" | "noise" | "energy" | "events";
 
 interface CityMapProps {
   theme: "light" | "dark";
@@ -104,7 +104,6 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
     let map: import("maplibre-gl").Map | null = null;
     let deck: import("@deck.gl/core").Deck | null = null;
     let transportTrips: Trip[] = [];
-    let peopleTrips: Trip[] = [];
 
     async function mount() {
       try {
@@ -173,13 +172,13 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
               lineWidthMinPixels: 2,
             }));
           }
-          if (visible.has("transport")) {
+          if (visible.has("traffic")) {
             layers.push(new TripsLayer({
-              id: "transport-trips",
+              id: "traffic-trips",
               data: transportTrips,
               getPath: (d: Trip) => d.path,
               getTimestamps: (d: Trip) => d.timestamps,
-              getColor: [30, 205, 255, 230],
+              getColor: [255, 166, 64, 225],
               widthMinPixels: 3.2,
               capRounded: true,
               jointRounded: true,
@@ -188,15 +187,15 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
               opacity: 0.95,
             }));
           }
-          if (visible.has("people")) {
+          if (visible.has("transit")) {
             layers.push(new TripsLayer({
-              id: "people-trips",
-              data: peopleTrips,
+              id: "public-transit-trips",
+              data: transportTrips.filter((_, index) => index % 4 === 0),
               getPath: (d: Trip) => d.path,
               getTimestamps: (d: Trip) => d.timestamps,
-              getColor: [95, 255, 185, 230],
-              widthMinPixels: 2,
-              trailLength: 90,
+              getColor: [30, 205, 255, 245],
+              widthMinPixels: 4.5,
+              trailLength: 150,
               currentTime: time,
             }));
           }
@@ -377,16 +376,13 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
           try {
             const features = map.querySourceFeatures("openmaptiles", { sourceLayer: "transportation" }) as TransportationFeature[];
             const roads: [number, number][][] = [];
-            const walkways: [number, number][][] = [];
             const seen = new Set<string>();
             for (const feature of features) {
               const properties = feature.properties ?? {};
               const classification = `${String(properties.class ?? "")} ${String(properties.subclass ?? "")}`.toLowerCase();
-              const target = /path|pedestrian|footway|steps/.test(classification)
-                ? walkways
-                : /motorway|trunk|primary|secondary|tertiary|minor|service|street/.test(classification)
-                  ? roads
-                  : null;
+              const target = /motorway|trunk|primary|secondary|tertiary|minor|service|street/.test(classification) && !/path|pedestrian|footway|steps/.test(classification)
+                ? roads
+                : null;
               if (!target) continue;
               const geometryLines: unknown[] = feature.geometry.type === "LineString"
                 ? [feature.geometry.coordinates]
@@ -412,10 +408,8 @@ export function CityMap({ theme, activeLayers, events, problemPoint, problemType
                 return { path, timestamps: path.map((_, pointIndex) => start + (duration * pointIndex) / Math.max(1, path.length - 1)) };
               });
             transportTrips = toTrips(roads, lowPowerMode ? 16 : 34);
-            peopleTrips = toTrips(walkways, lowPowerMode ? 8 : 18);
           } catch {
             transportTrips = [];
-            peopleTrips = [];
           }
         };
         map.on("idle", rebuildNetworkTrips);

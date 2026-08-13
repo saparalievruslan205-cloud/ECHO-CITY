@@ -24,6 +24,12 @@ test("server-renders the ECHO CITY dashboard shell", async () => {
   assert.match(html, /id="city-main"/);
   assert.match(html, /aria-label="Основные разделы"/);
   assert.match(html, /Сценарий: работы на проспекте Чуй/);
+  assert.match(html, /Октябрьский/);
+  assert.match(html, /Экология и PM2\.5/);
+  assert.match(html, /Общественный транспорт/);
+  assert.match(html, /О платформе/);
+  assert.match(html, /Данные: Демо-режим \(Симуляция\)/);
+  assert.match(html, /ECHO CITY © 2026/);
   assert.match(html, /href="\/signin-with-chatgpt\?return_to=%2F"/);
   assert.doesNotMatch(html, /--:--:--|<div hidden/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
