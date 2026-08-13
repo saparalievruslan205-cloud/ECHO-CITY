@@ -41,11 +41,6 @@ interface LocalRoad {
   major: boolean;
 }
 
-interface LocalBuilding {
-  polygon: [number, number][];
-  elevation: number;
-}
-
 const localRoads: LocalRoad[] = [
   ...Array.from({ length: 13 }, (_, index) => {
     const longitude = 74.505 + index * 0.015;
@@ -62,24 +57,6 @@ const localRoads: LocalRoad[] = [
     };
   }),
 ];
-
-const localBuildings: LocalBuilding[] = Array.from({ length: 72 }, (_, index) => {
-  const column = index % 12;
-  const row = Math.floor(index / 12);
-  const longitude = 74.508 + column * 0.0157 + (row % 2) * 0.002;
-  const latitude = 42.824 + row * 0.0167;
-  const width = 0.0034 + (index % 3) * 0.0008;
-  const height = 0.0024 + (index % 4) * 0.00045;
-  return {
-    polygon: [
-      [longitude - width, latitude - height],
-      [longitude + width, latitude - height],
-      [longitude + width, latitude + height],
-      [longitude - width, latitude + height],
-    ] as [number, number][],
-    elevation: 18 + (index % 7) * 11,
-  };
-});
 
 export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,7 +87,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
     async function mount() {
       try {
         const maplibregl = await import("maplibre-gl");
-        const [{ Deck }, { PathLayer, PolygonLayer, ScatterplotLayer }, { TripsLayer }] = await Promise.all([
+        const [{ Deck }, { PathLayer, ScatterplotLayer }, { TripsLayer }] = await Promise.all([
           import("@deck.gl/core"),
           import("@deck.gl/layers"),
           import("@deck.gl/geo-layers"),
@@ -147,19 +124,6 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
               widthMinPixels: 1,
               jointRounded: true,
               capRounded: true,
-            }),
-            new PolygonLayer({
-              id: "local-building-structure",
-              data: localBuildings,
-              getPolygon: (d: LocalBuilding) => d.polygon,
-              getElevation: (d: LocalBuilding) => d.elevation,
-              getFillColor: theme === "dark" ? [20, 52, 69, 220] : [186, 207, 216, 230],
-              getLineColor: theme === "dark" ? [53, 125, 151, 150] : [112, 158, 174, 150],
-              extruded: true,
-              wireframe: true,
-              stroked: true,
-              lineWidthMinPixels: 0.6,
-              material: { ambient: 0.55, diffuse: 0.65, shininess: 18, specularColor: [80, 155, 178] },
             }),
           ];
           if (visible.has("air")) {
