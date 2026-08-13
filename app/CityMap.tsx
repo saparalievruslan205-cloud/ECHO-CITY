@@ -36,6 +36,15 @@ const fieldPoints = [
   { position: [74.59, 42.82], air: 49, noise: 52, energy: 69 },
 ] as Array<{ position: [number, number]; air: number; noise: number; energy: number }>;
 
+function supportsWebGL() {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2", { failIfMajorPerformanceCaveat: true }) || canvas.getContext("webgl", { failIfMajorPerformanceCaveat: true }));
+  } catch {
+    return false;
+  }
+}
+
 export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const deckContainerRef = useRef<HTMLDivElement>(null);
@@ -44,7 +53,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
   const eventsRef = useRef(events);
   const resultRef = useRef(result);
   const problemRef = useRef(problemPoint);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unsupported" | "error">("loading");
 
   useEffect(() => {
     callbackRef.current = onPick;
@@ -56,16 +65,23 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
 
   useEffect(() => {
     if (!containerRef.current) return;
+    if (!supportsWebGL()) {
+      const unsupportedTimer = window.setTimeout(() => setState("unsupported"), 0);
+      return () => window.clearTimeout(unsupportedTimer);
+    }
     let disposed = false;
     let frame = 0;
     let readyTimer = 0;
+    let mapReady = false;
+    let lastFrame = 0;
+    let contextCanvas: HTMLCanvasElement | null = null;
     let map: import("maplibre-gl").Map | null = null;
     let deck: import("@deck.gl/core").Deck | null = null;
 
     async function mount() {
       try {
-        const maplibregl = await import("maplibre-gl");
-        const [{ Deck }, { ScatterplotLayer }, { TripsLayer }] = await Promise.all([
+        const [maplibregl, { Deck }, { ScatterplotLayer }, { TripsLayer }] = await Promise.all([
+          import("maplibre-gl"),
           import("@deck.gl/core"),
           import("@deck.gl/layers"),
           import("@deck.gl/geo-layers"),
@@ -74,6 +90,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
 
         maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 
+        const lowPowerMode = window.innerWidth < 768;
         map = new maplibregl.Map({
           container: containerRef.current,
           style: theme === "dark" ? "https://tiles.openfreemap.org/styles/dark" : "https://tiles.openfreemap.org/styles/positron",
@@ -81,7 +98,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
           zoom: 12.1,
           pitch: 55,
           bearing: -14,
-          canvasContextAttributes: { antialias: true },
+          canvasContextAttributes: { antialias: !lowPowerMode },
           attributionControl: false,
         });
         map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
@@ -203,19 +220,23 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
           controller: false,
           initialViewState: getViewState(),
           layers: makeLayers(0),
-          useDevicePixels: window.innerWidth < 768 ? 1 : true,
+          useDevicePixels: lowPowerMode ? 1 : true,
         });
         const syncDeckCamera = () => deck?.setProps({ viewState: getViewState() });
         map.on("move", syncDeckCamera);
         map.on("resize", syncDeckCamera);
         const markReady = () => {
           if (!disposed) {
+            mapReady = true;
+            window.clearTimeout(readyTimer);
             setState("ready");
             if (performance.getEntriesByName("echo-map-ready").length === 0) performance.mark("echo-map-ready");
           }
         };
         map.once("render", markReady);
-        readyTimer = window.setTimeout(markReady, 2500);
+        readyTimer = window.setTimeout(() => {
+          if (!disposed && !mapReady) setState("error");
+        }, 10_000);
         map.on("load", () => {
           if (!map || disposed) return;
           map.resize();
@@ -243,33 +264,45 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
         });
         map.on("click", (event) => callbackRef.current([event.lngLat.lng, event.lngLat.lat]));
         map.on("error", (event) => {
-          if (event.error?.message?.includes("WebGL")) setState("error");
+          if (event.error?.message?.toLowerCase().includes("webgl")) setState("unsupported");
         });
+        contextCanvas = map.getCanvas();
+        contextCanvas.addEventListener("webglcontextlost", handleContextLost);
 
         const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const targetFrameTime = lowPowerMode ? 1000 / 30 : 1000 / 60;
         const animate = (now: number) => {
           if (disposed || !deck) return;
-          deck.setProps({ layers: makeLayers(reduceMotion ? 230 : (now / 18) % 500) });
           frame = requestAnimationFrame(animate);
+          if (now - lastFrame < targetFrameTime) return;
+          lastFrame = now;
+          deck.setProps({ layers: makeLayers((now / 18) % 500) });
         };
-        frame = requestAnimationFrame(animate);
+        if (reduceMotion) deck.setProps({ layers: makeLayers(230) });
+        else frame = requestAnimationFrame(animate);
       } catch {
         if (!disposed) setState("error");
       }
     }
+
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      if (!disposed) setState("unsupported");
+    };
 
     void mount();
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
       window.clearTimeout(readyTimer);
+      contextCanvas?.removeEventListener("webglcontextlost", handleContextLost);
       deck?.finalize();
       map?.remove();
     };
   }, [theme]);
 
   return (
-    <div className="relative size-full overflow-hidden bg-[var(--map-fallback)]">
+    <div className="relative size-full overflow-hidden bg-[var(--map-fallback)]" aria-busy={state === "loading"}>
       <div ref={containerRef} className="echo-map-container absolute inset-0" aria-label="Интерактивная 3D-карта Бишкека" />
       <div ref={deckContainerRef} className="pointer-events-none absolute inset-0" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_35%,var(--map-vignette)_100%)]" />
@@ -281,12 +314,13 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
           </div>
         </div>
       )}
-      {state === "error" && (
-        <div className="absolute inset-0 echo-map-grid grid place-items-center" role="alert">
+      {(state === "unsupported" || state === "error") && (
+        <div className="absolute inset-0 grid place-items-center bg-[var(--map-fallback)] px-5" role="alert">
           <div className="max-w-sm rounded-[var(--panel-radius)] border border-[var(--border-subtle)] bg-[var(--surface-panel)] p-6 text-center shadow-[var(--shadow-panel)]">
             <LocateFixed className="mx-auto mb-3 size-6 text-[var(--accent-cyan)]" />
-            <p className="font-semibold text-[var(--text-primary)]">Карта временно недоступна</p>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">Аналитика и симулятор продолжают работать на последнем снимке данных.</p>
+            <p className="font-semibold text-[var(--text-primary)]">{state === "unsupported" ? "3D-карта недоступна в этом браузере" : "Карта не загрузилась"}</p>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">{state === "unsupported" ? "Включите WebGL и аппаратное ускорение или откройте сайт в современном браузере." : "Проверьте соединение и повторите загрузку. Аналитика продолжает работать на последнем снимке."}</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-4 min-h-10 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-xs font-semibold text-[var(--text-primary)]">Повторить</button>
           </div>
         </div>
       )}

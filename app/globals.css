@@ -150,7 +150,6 @@ button { cursor: pointer; }
 .echo-input:focus { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px var(--accent-cyan-glow); background: var(--surface-raised); }
 .echo-range { appearance: none; height: 4px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); outline: none; }
 .echo-range::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--surface-panel-strong); background: var(--accent-cyan); box-shadow: 0 0 0 1px var(--accent-cyan), 0 0 16px var(--accent-cyan-glow); }
-.echo-map-grid { background-color: var(--map-fallback); background-image: linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px); background-size: 32px 32px; }
 .maplibregl-map { font-family: var(--font-geist-sans), "Segoe UI", sans-serif; }
 .maplibregl-ctrl-group { overflow: hidden; border: 1px solid var(--border-subtle) !important; border-radius: 12px !important; background: var(--surface-panel-strong) !important; box-shadow: var(--shadow-panel) !important; }
 .maplibregl-ctrl-group button { filter: var(--map-control-filter, invert(1)); }
