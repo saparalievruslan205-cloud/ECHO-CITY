@@ -151,6 +151,7 @@ button { cursor: pointer; }
 .echo-range { appearance: none; height: 4px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); outline: none; }
 .echo-range::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--surface-panel-strong); background: var(--accent-cyan); box-shadow: 0 0 0 1px var(--accent-cyan), 0 0 16px var(--accent-cyan-glow); }
 .maplibregl-map { font-family: var(--font-geist-sans), "Segoe UI", sans-serif; }
+.echo-map-picking .maplibregl-canvas { cursor: crosshair !important; }
 .maplibregl-ctrl-group { overflow: hidden; border: 1px solid var(--border-subtle) !important; border-radius: 12px !important; background: var(--surface-panel-strong) !important; box-shadow: var(--shadow-panel) !important; }
 .maplibregl-ctrl-group button { filter: var(--map-control-filter, invert(1)); }
 .light .maplibregl-ctrl-group button { --map-control-filter: none; }
@@ -158,13 +159,9 @@ button { cursor: pointer; }
 .maplibregl-ctrl-attrib a { color: var(--text-secondary) !important; }
 
 @keyframes echo-live { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--accent-green) 50%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
-@keyframes echo-radar-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes echo-command { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.8); opacity: 0; } }
 @keyframes echo-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes echo-sheet-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 .echo-live-dot { animation: echo-live 1.8s ease-in-out infinite; }
-.echo-radar::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; background: conic-gradient(from 0deg, transparent 0 78%, var(--accent-cyan) 96%, transparent 100%); animation: echo-radar-sweep 4s linear infinite; mask: radial-gradient(circle, transparent 58%, black 60%); }
-.echo-command-pulse { border: 1px solid var(--accent-cyan); animation: echo-command 2s ease-out infinite; }
 
 @media (min-width: 768px) {
   @keyframes echo-sheet-in { from { opacity: 0; transform: translate(24px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }

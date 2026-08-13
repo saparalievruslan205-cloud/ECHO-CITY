@@ -15,6 +15,7 @@ interface CityMapProps {
   result: ScenarioResult | null;
   pickMode: boolean;
   onPick: (coordinates: [number, number]) => void;
+  onCancelPick: () => void;
 }
 
 const transportTrips = [
@@ -45,7 +46,7 @@ function supportsWebGL() {
   }
 }
 
-export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick }: CityMapProps) {
+export function CityMap({ theme, activeLayers, events, problemPoint, result, pickMode, onPick, onCancelPick }: CityMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const deckContainerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onPick);
@@ -302,7 +303,7 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
   }, [theme]);
 
   return (
-    <div className="relative size-full overflow-hidden bg-[var(--map-fallback)]" aria-busy={state === "loading"}>
+    <div className={`relative size-full overflow-hidden bg-[var(--map-fallback)]${pickMode ? " echo-map-picking" : ""}`} aria-busy={state === "loading"}>
       <div ref={containerRef} className="echo-map-container absolute inset-0" aria-label="Интерактивная 3D-карта Бишкека" />
       <div ref={deckContainerRef} className="pointer-events-none absolute inset-0" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_35%,var(--map-vignette)_100%)]" />
@@ -325,11 +326,11 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
         </div>
       )}
       {pickMode && (
-        <div className="pointer-events-none absolute left-1/2 top-24 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--accent-cyan)]/45 bg-[var(--surface-panel-strong)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] shadow-[var(--shadow-action)]">
-          <MousePointer2 className="size-3.5 text-[var(--accent-cyan)]" /> Укажите точку проблемы на карте
+        <div className="absolute left-1/2 top-24 z-10 flex -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-full border border-[var(--accent-cyan)]/45 bg-[var(--surface-panel-strong)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] shadow-[var(--shadow-action)]">
+          <span className="flex items-center gap-2"><MousePointer2 className="size-3.5 text-[var(--accent-cyan)]" /> Укажите точку проблемы</span>
+          <button type="button" onClick={onCancelPick} className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Отмена</button>
         </div>
       )}
-      <div className="pointer-events-none absolute bottom-6 left-1/2 h-20 w-20 -translate-x-1/2 rounded-full border border-[var(--accent-cyan)]/15 echo-radar" aria-hidden="true" />
     </div>
   );
 }

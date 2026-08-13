@@ -299,11 +299,23 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
   };
 
   const handleMapPick = useCallback((coordinates: [number, number]) => {
-    if (!simulatorOpen && !pickMode) return;
+    if (!pickMode) return;
     setScenario((current) => ({ ...current, problem: { ...current.problem, coordinates } }));
     setPickMode(false);
+    setSimulatorOpen(true);
     setActionMessage("Точка проблемы обновлена");
-  }, [simulatorOpen, pickMode]);
+  }, [pickMode]);
+
+  const startMapPick = () => {
+    setActionMessage("");
+    setPickMode(true);
+    setSimulatorOpen(false);
+  };
+
+  const cancelMapPick = () => {
+    setPickMode(false);
+    setSimulatorOpen(true);
+  };
 
   const runSimulation = () => {
     setIsRunning(true);
@@ -427,10 +439,11 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
           theme={theme}
           activeLayers={activeLayers}
           events={snapshot.events}
-          problemPoint={simulatorOpen || result ? scenario.problem.coordinates : null}
+          problemPoint={simulatorOpen || pickMode || result ? scenario.problem.coordinates : null}
           result={result}
           pickMode={pickMode}
           onPick={handleMapPick}
+          onCancelPick={cancelMapPick}
         />
 
         <Panel className="absolute left-4 top-[88px] z-20 hidden w-[242px] overflow-hidden lg:block">
@@ -519,7 +532,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
 
         <div className="absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 md:block">
           <button type="button" onClick={() => setSimulatorOpen(true)} className="group flex min-h-14 items-center gap-4 rounded-2xl border border-[var(--accent-cyan)]/28 bg-[var(--surface-panel-strong)] px-4 py-2.5 shadow-[var(--shadow-floating)] backdrop-blur-2xl transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]">
-            <span className="relative grid size-9 place-items-center rounded-xl bg-[var(--accent-cyan)] text-[var(--action-primary-fg)]"><Network className="size-4" /><span className="absolute inset-0 rounded-xl echo-command-pulse" /></span>
+            <span className="grid size-9 place-items-center rounded-xl bg-[var(--accent-cyan)] text-[var(--action-primary-fg)]"><Network className="size-4" /></span>
             <span className="text-left"><span className="block text-sm font-bold">Создать городскую проблему</span><span className="block text-[10px] text-[var(--text-tertiary)]">Выберите решение и увидьте прогноз</span></span>
             <span className="ml-2 grid size-8 place-items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)]"><ChevronRight className="size-4 text-[var(--accent-cyan)] transition-transform group-hover:translate-x-0.5" /></span>
           </button>
@@ -564,7 +577,7 @@ export function EchoCityApp({ user, signInPath }: EchoCityAppProps) {
 
               <fieldset className="space-y-4">
                 <legend className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]"><span className="grid size-5 place-items-center rounded-full bg-[var(--accent-cyan)]/12 text-[var(--accent-cyan)]">2</span> Параметры</legend>
-                <button type="button" onClick={() => setPickMode(true)} className={cn("flex min-h-12 w-full items-center gap-3 rounded-xl border px-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]", pickMode ? "border-[var(--accent-cyan)] bg-[var(--accent-cyan)]/8" : "border-[var(--border-subtle)] bg-[var(--surface-muted)]")}><MapPin className="size-4 text-[var(--accent-cyan)]" /><span className="flex-1"><span className="block text-xs font-semibold">{scenario.problem.coordinates[1].toFixed(4)}, {scenario.problem.coordinates[0].toFixed(4)}</span><span className="block text-[10px] text-[var(--text-tertiary)]">{pickMode ? "Кликните по карте" : "Изменить точку на карте"}</span></span><ChevronRight className="size-4 text-[var(--text-tertiary)]" /></button>
+                <button type="button" onClick={startMapPick} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"><MapPin className="size-4 text-[var(--accent-cyan)]" /><span className="flex-1"><span className="block text-xs font-semibold">{scenario.problem.coordinates[1].toFixed(4)}, {scenario.problem.coordinates[0].toFixed(4)}</span><span className="block text-[10px] text-[var(--text-tertiary)]">Выбрать точку на карте</span></span><ChevronRight className="size-4 text-[var(--text-tertiary)]" /></button>
                 <label className="block"><span className="mb-2 flex justify-between text-xs"><span className="font-semibold">Интенсивность</span><span className="font-mono text-[var(--accent-cyan)]">{scenario.problem.intensity}%</span></span><input aria-label="Интенсивность проблемы" type="range" min="1" max="100" value={scenario.problem.intensity} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, intensity: Number(event.target.value) } }))} className="echo-range w-full" /></label>
                 <div className="grid grid-cols-2 gap-3">
                   <label><span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-tertiary)]">Радиус, м</span><input type="number" min="100" max="5000" value={scenario.problem.radius} onChange={(event) => setScenario((current) => ({ ...current, problem: { ...current.problem, radius: Number(event.target.value) } }))} className="echo-input" /></label>
