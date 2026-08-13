@@ -117,6 +117,8 @@ export function CityMap({ theme, activeLayers, events, problemPoint, result, pic
         ]);
         if (disposed || !containerRef.current || !deckContainerRef.current) return;
 
+        maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
+
         map = new maplibregl.Map({
           container: containerRef.current,
           style: theme === "dark" ? "https://tiles.openfreemap.org/styles/dark" : "https://tiles.openfreemap.org/styles/positron",

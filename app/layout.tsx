@@ -11,6 +11,7 @@ const baseMetadata: Metadata = {
   title: "ECHO CITY — цифровой двойник Бишкека",
   description: "Интерактивная карта, городская аналитика и симулятор решений для Бишкека.",
   applicationName: "ECHO CITY",
+  icons: { icon: "/favicon.svg" },
   keywords: ["Бишкек", "цифровой двойник", "городская аналитика", "транспорт", "экология"],
   openGraph: {
     title: "ECHO CITY — цифровой двойник Бишкека",
